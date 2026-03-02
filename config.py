@@ -12,7 +12,7 @@ PROCESSED_DATA_DIR = DATA_DIR / "processed"
 VECTORSTORE_PATH = DATA_DIR / "vectorstore"
 
 # Crawler
-CRAWL_URL = ""  # URL trang web cần crawl
+CRAWL_URL = "https://yhoccongdong.com/tieu-duong/"  # URL trang web cần crawl
 CRAWL_DEPTH = 2  # Độ sâu crawl (số cấp link)
 
 # Chunking
@@ -20,13 +20,13 @@ CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
 
 # Embedding (local model, e.g. sentence-transformers)
-EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2" #sentence-transformers
 
 # Vector Store
-VECTORSTORE_TYPE = "chroma"  # chroma | faiss
+VECTORSTORE_TYPE = "chroma"  # faiss
 
 # LLM (local, e.g. Ollama, llama.cpp)
-LLM_MODEL = "llama3.2"  # Tên model trong Ollama
+LLM_MODEL = "llama3.2"  # Tên model trong Ollama - Llama 3 8B Instruct (chạy 4-bit) [AI đề xuất] - OWEN, Mistral [thầy đề xuất]
 LLM_BASE_URL = "http://localhost:11434"  # Ollama default
 
 # RAG

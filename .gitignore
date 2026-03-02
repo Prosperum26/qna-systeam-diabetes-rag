@@ -5,7 +5,7 @@ __pycache__/
 .venv/
 venv/
 .env
-
+note.txt
 # Data (giữ raw nếu cần, bỏ comment nếu muốn ignore)
 # data/raw/*
 # data/processed/*
