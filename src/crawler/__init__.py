@@ -1,4 +1,6 @@
-"""Module crawl dữ liệu từ web."""
-from .scraper import WebScraper
+"""Module crawl dữ liệu từ web (dự án Tiểu đường)."""
 
-__all__ = ["WebScraper"]
+from .scraper import run_diabetes_crawler
+from .impl import DiabetesCrawler
+
+__all__ = ["run_diabetes_crawler", "DiabetesCrawler"]
