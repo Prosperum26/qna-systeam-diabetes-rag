@@ -26,7 +26,7 @@ EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2" 
 VECTORSTORE_TYPE = "chroma"  # faiss
 
 # LLM (local, e.g. Ollama, llama.cpp)
-LLM_MODEL = "llama3.2"  # Tên model trong Ollama - Llama 3 8B Instruct (chạy 4-bit) [AI đề xuất] - OWEN, Mistral [thầy đề xuất]
+LLM_MODEL = "llama3"  # Tên model trong Ollama - Llama 3 8B Instruct (chạy 4-bit) [AI đề xuất] - OWEN, Mistral [thầy đề xuất]
 LLM_BASE_URL = "http://localhost:11434"  # Ollama default
 
 # RAG
