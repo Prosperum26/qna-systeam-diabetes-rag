@@ -13,6 +13,7 @@ data/raw/
 data/documents/
 data/processed/
 data/vectorstore/
+data/chunked/
 
 # IDE / tooling
 .cursor/
