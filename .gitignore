@@ -9,11 +9,7 @@ note.txt
 
 # Crawler / RAG data
 # Bỏ version control cho dữ liệu sinh ra trong quá trình crawl & RAG.
-data/raw/
-data/documents/
-data/processed/
-data/vectorstore/
-data/chunked/
+data/
 
 # IDE / tooling
 .cursor/

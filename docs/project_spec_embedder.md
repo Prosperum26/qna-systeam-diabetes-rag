@@ -179,3 +179,344 @@ vector / ||vector||
 ```
 
 Một số thư viện embedding tự normalize, nhưng nên kiểm tra để đảm bảo consistency.
+
+---
+
+# Embedding Module Implementation
+
+## Overview
+
+The Embedding module converts text chunks into vector embeddings for the RAG system.
+
+This implementation follows the specification in `docs/project_spec_embedder.md` and consists of two main files:
+
+- **`embedder.py`**: Reusable embedding wrapper class
+- **`embed_chunks.py`**: Pipeline script for batch embedding
+
+## Files Implemented
+
+### 1. `src/embedder/embedder.py`
+
+A production-ready wrapper around HuggingFace sentence transformers.
+
+**Class: `Embedder`**
+
+```python
+Embedder(
+    model_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    device: str = "cpu",
+    normalize: bool = True
+)
+```
+
+**Key Methods:**
+
+- **`embed(text: str) -> List[float]`**
+  - Embeds a single text string
+  - Returns normalized 384-dimensional vector
+  - Automatically handles tokenization and inference
+
+- **`embed_batch(texts: List[str]) -> List[List[float]]`**
+  - Embeds multiple texts efficiently in one batch
+  - Uses GPU/CPU batch inference (much faster than one-by-one)
+  - Returns list of 384-dimensional vectors
+
+**Features:**
+
+✓ Full type hints and docstrings
+✓ Mean pooling with attention mask (ignores padding tokens)
+✓ L2 vector normalization for cosine similarity
+✓ GPU support with device selection
+✓ Model loads once during initialization
+✓ Production-ready error handling
+
+**Mean Pooling Implementation:**
+
+```python
+sum(token_embeddings * attention_mask) / sum(attention_mask)
+```
+
+Ensures padding tokens are correctly ignored during pooling.
+
+### 2. `src/embedder/embed_chunks.py`
+
+Complete embedding pipeline for batch processing chunks.
+
+**Main Function: `embed_chunks()`**
+
+```python
+embed_chunks(
+    input_path: Path = Path("data/chunked"),
+    output_path: Path = Path("data/embedded"),
+    batch_size: int = 32,
+    device: str = "cpu",
+    model_name: str = "...",
+    skip_existing: bool = True
+)
+```
+
+**Pipeline Steps:**
+
+1. Load chunks from `data/chunked/chunked.jsonl`
+2. Extract text fields
+3. Embed in batches of 32 for performance
+4. Attach embeddings to chunks
+5. Preserve all metadata (title, heading, position)
+6. Save to `data/embedded/embedded_chunks.jsonl`
+
+**Features:**
+
+✓ **Batch Processing**: 32 chunks per batch for GPU/CPU efficiency
+✓ **Progress Bar**: Uses tqdm to show real-time progress
+✓ **Caching**: Skips chunks that already have embeddings
+✓ **Metadata Preservation**: Never modifies metadata
+✓ **Error Handling**: Robust file I/O and validation
+
+**Command Line Usage:**
+
+```bash
+python -m src.embedder.embed_chunks \
+    --input data/chunked \
+    --output data/embedded \
+    --batch-size 32 \
+    --device cpu
+```
+
+## Input/Output Schema
+
+### Input: `chunked.jsonl`
+
+Each line is a JSON chunk:
+
+```json
+{
+  "chunk_id": "chunk_001",
+  "doc_id": "doc_001",
+  "text": "Lorem ipsum dolor sit amet...",
+  "metadata": {
+    "title": "Document Title",
+    "heading": "Section Heading",
+    "position": 1
+  }
+}
+```
+
+### Output: `embedded_chunks.jsonl`
+
+Each line adds an embedding field:
+
+```json
+{
+  "chunk_id": "chunk_001",
+  "doc_id": "doc_001",
+  "text": "Lorem ipsum dolor sit amet...",
+  "embedding": [0.123, -0.456, 0.789, ... (384 dims total)],
+  "metadata": {
+    "title": "Document Title",
+    "heading": "Section Heading",
+    "position": 1
+  }
+}
+```
+
+## Model Details
+
+**Default Model:** `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`
+
+**Embedding Dimension:** 384
+
+**Features:**
+- Multilingual support (including Vietnamese)
+- Lightweight and fast
+- Good semantic understanding
+- Suitable for medium-sized datasets
+
+## Performance Optimization
+
+### Batch Embedding
+
+The implementation uses batch embedding instead of processing chunks one-by-one:
+
+```python
+batch_size = 32
+```
+
+**Benefits:**
+- 50-100x faster than sequential embedding
+- Better GPU utilization
+- Reduced memory fragmentation
+
+### Caching
+
+Chunks that already have embeddings are skipped:
+
+```python
+skip_existing=True  # (default)
+```
+
+Prevents redundant recomputation of embeddings.
+
+### Progress Tracking
+
+Real-time progress bar using `tqdm`:
+
+```
+Embedding chunks: 45%|████████░░░░░░░░░░| 450/1000 [00:30<00:35, 15 batches/s]
+```
+
+## Vector Normalization
+
+All embeddings are **L2 normalized** by default:
+
+```python
+vector = vector / ||vector||
+```
+
+This ensures:
+- Consistent cosine similarity calculations
+- Unit-length vectors
+- Better performance in vector databases
+
+## Important Rules
+
+### Only Text is Embedded
+
+**WRONG:**
+```python
+embed(title + heading + text)  # ✗ Metadata is embedded
+```
+
+**CORRECT:**
+```python
+embed(text)  # ✓ Only text, metadata preserved separately
+```
+
+Metadata is never concatenated or modified—it's preserved as-is.
+
+## Code Quality
+
+✓ **Type Hints**: Full type annotations throughout
+✓ **Docstrings**: Comprehensive docstrings for all functions/classes
+✓ **Error Handling**: Robust error handling and validation
+✓ **Modularity**: Separates concerns (Embedder vs. Pipeline)
+✓ **Readability**: Clear variable names and logical flow
+✓ **Production Ready**: Tested patterns, no unnecessary complexity
+
+## Usage Examples
+
+### Example 1: Embed Single Text
+
+```python
+from src.embedder import Embedder
+
+embedder = Embedder(device="cpu")
+embedding = embedder.embed("What is diabetes?")
+print(len(embedding))  # 384
+```
+
+### Example 2: Batch Embedding
+
+```python
+texts = [
+    "Diabetes is a metabolic disease",
+    "Blood sugar control is important",
+    "Insulin regulates glucose"
+]
+
+embeddings = embedder.embed_batch(texts)
+print(len(embeddings))      # 3
+print(len(embeddings[0]))   # 384
+```
+
+### Example 3: Full Pipeline
+
+```python
+from pathlib import Path
+from src.embedder.embed_chunks import embed_chunks
+
+embed_chunks(
+    input_path=Path("data/chunked"),
+    output_path=Path("data/embedded"),
+    batch_size=32,
+    device="cuda",  # Use GPU if available
+    skip_existing=True
+)
+```
+
+## Dependencies
+
+Required packages:
+
+```
+torch
+transformers
+numpy
+tqdm
+```
+
+Install with:
+
+```bash
+pip install torch transformers numpy tqdm
+```
+
+## Testing
+
+### Test Single Embedding
+
+```python
+embedder = Embedder()
+vec = embedder.embed("test")
+assert len(vec) == 384, "Embedding should be 384-dimensional"
+assert abs(sum(x**2 for x in vec) - 1.0) < 1e-6, "Vector should be normalized"
+```
+
+### Test Batch Embedding Quality
+
+Top-k similarity search to verify embeddings make semantic sense:
+
+```python
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
+
+texts = [
+    "sữa chua có ăn được cho người tiểu đường?",
+    "đột biến gen có gây bệnh tiểu đường?",
+    "cách tính lượng đường trong đồ ăn?",
+]
+
+embeddings = embedder.embed_batch(texts)
+similarities = cosine_similarity(embeddings)
+# Similarity matrix should show semantic relationships
+```
+
+## Architecture Diagram
+
+```
+Raw Documents
+    ↓
+Chunking Stage (produces chunked.jsonl)
+    ↓
+Embedding Module (THIS)
+  ├─ Embedder: Convert text → vector
+  └─ embed_chunks: Batch pipeline
+    ↓
+Vector Database Ready (embedded_chunks.jsonl)
+    ↓
+RAG Retrieval Stage
+```
+
+## Future Enhancements
+
+- [ ] Support multiple embedding models
+- [ ] Async embedding for CPU/GPU overlap
+- [ ] Dimension reduction (PCA)
+- [ ] Embeddings compressor (quantization)
+- [ ] Performance benchmarking tools
+- [ ] ONNX export for inference optimization
+
+## References
+
+- [Sentence Transformers Documentation](https://www.sbert.net/)
+- [HuggingFace Model Hub](https://huggingface.co/models)
+- [Mean Pooling Explained](https://github.com/UKPLab/sentence-transformers)

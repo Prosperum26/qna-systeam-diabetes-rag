@@ -1,4 +1,9 @@
-"""Module embedding - chuyển text thành vector."""
-from .embedding import LocalEmbedder
+"""
+Embedding module - converts text to vector embeddings.
 
-__all__ = ["LocalEmbedder"]
+Provides both a low-level Embedder class and high-level embedding pipeline.
+"""
+
+from .embedder import Embedder
+
+__all__ = ["Embedder"]
