@@ -158,11 +158,28 @@ class DiabetesCrawler(BaseCrawler):
         self,
         max_pages: Optional[int] = None,
         max_links: Optional[int] = None,
+        use_ajax: bool = True,
     ) -> List[ArticleLink]:
         """
         Discover article links from the category and pagination pages.
-
+        
+        If use_ajax is True, will use AJAX pagination instead of traditional pagination.
         If max_links được truyền vào, sẽ dừng sớm khi đã thu thập đủ số lượng link cần thiết.
+        """
+        links: List[ArticleLink] = []
+        
+        if use_ajax:
+            return self._get_article_links_ajax(max_pages, max_links)
+        else:
+            return self._get_article_links_traditional(max_pages, max_links)
+    
+    def _get_article_links_traditional(
+        self,
+        max_pages: Optional[int] = None,
+        max_links: Optional[int] = None,
+    ) -> List[ArticleLink]:
+        """
+        Traditional pagination method (original implementation).
         """
         links: List[ArticleLink] = []
         page_index = 1
@@ -230,6 +247,261 @@ class DiabetesCrawler(BaseCrawler):
             )
             page_index += 1
 
+        return links
+    
+    def _get_article_links_ajax(
+        self,
+        max_pages: Optional[int] = None,
+        max_links: Optional[int] = None,
+    ) -> List[ArticleLink]:
+        """
+        AJAX pagination method for WordPress sites with load more functionality.
+        Starts from page 2 since page 1 is the initial page load.
+        """
+        links: List[ArticleLink] = []
+        page_index = 2  # Start from page 2 for AJAX requests
+        
+        # First, get the initial page to extract the nonce
+        initial_html = self.fetch(self.BASE_CATEGORY_URL)
+        if not initial_html:
+            self.logger.error("Failed to fetch initial page, cannot extract nonce.")
+            return links
+            
+        # Extract nonce from the initial page
+        nonce = self._extract_ajax_nonce(initial_html)
+        if not nonce:
+            self.logger.error("Could not extract AJAX nonce from initial page.")
+            return links
+        
+        # Parse initial page for articles
+        soup = BeautifulSoup(initial_html, "html.parser")
+        initial_links = self._parse_articles_from_soup(soup)
+        links.extend(initial_links)
+        
+        self.logger.info("Found %s articles on initial page", len(initial_links))
+        
+        if max_links is not None and len(links) >= max_links:
+            return links[:max_links]
+        
+        # Continue with AJAX pagination starting from page 2
+        while True:
+            if max_pages is not None and (page_index - 1) > max_pages:  # -1 because we start from page 2
+                break
+                
+            # Check if we've reached the limit
+            if max_links is not None and len(links) >= max_links:
+                break
+                
+            # Fetch next page via AJAX
+            ajax_html = self._fetch_ajax_page(page_index, nonce)
+            if not ajax_html:
+                self.logger.info("No more articles via AJAX at page %s, stopping.", page_index)
+                break
+            
+            # Parse AJAX response
+            ajax_soup = BeautifulSoup(ajax_html, "html.parser")
+            ajax_links = self._parse_articles_from_soup(ajax_soup)
+            
+            if not ajax_links:
+                self.logger.info("No new articles found in AJAX response at page %s, stopping.", page_index)
+                break
+            
+            # Add new links
+            page_links_before = len(links)
+            for link in ajax_links:
+                # Check for duplicates
+                if not any(existing.url == link.url for existing in links):
+                    links.append(link)
+                    
+                    # Stop early if we've reached the limit
+                    if max_links is not None and len(links) >= max_links:
+                        self.logger.info(
+                            "Reached requested max_links=%s at AJAX page %s", max_links, page_index
+                        )
+                        return links[:max_links]
+            
+            if len(links) == page_links_before:
+                self.logger.info("No new unique articles found in AJAX response at page %s, stopping.", page_index)
+                break
+            
+            self.logger.info(
+                "Discovered %s total article links after AJAX page %s (%d new this page)", 
+                len(links), page_index, len(ajax_links)
+            )
+            page_index += 1  # Increment to next page
+        
+        return links
+    
+    def _extract_ajax_nonce(self, html: str) -> Optional[str]:
+        """Extract AJAX nonce from the page HTML."""
+        try:
+            # Look for nonce in JavaScript variables
+            import re
+            
+            # Pattern to match nonce in JavaScript
+            patterns = [
+                r'nonce["\']?\s*:\s*["\']([a-f0-9]+)["\']',
+                r'_ajax_nonce["\']?\s*:\s*["\']([a-f0-9]+)["\']',
+                r'nonce_ajax["\']?\s*=\s*{[^}]*nonce["\']?\s*:\s*["\']([a-f0-9]+)["\']',
+            ]
+            
+            for pattern in patterns:
+                match = re.search(pattern, html, re.IGNORECASE)
+                if match:
+                    nonce = match.group(1)
+                    self.logger.info("Found AJAX nonce: %s", nonce)
+                    return nonce
+            
+            # If not found in JS, try to find in meta tags or other locations
+            soup = BeautifulSoup(html, "html.parser")
+            
+            # Look for nonce in data attributes
+            nonce_elem = soup.find(attrs={"data-nonce": True})
+            if nonce_elem:
+                nonce = nonce_elem.get("data-nonce")
+                if nonce:
+                    self.logger.info("Found AJAX nonce in data attribute: %s", nonce)
+                    return nonce
+            
+            self.logger.warning("Could not find AJAX nonce in page HTML")
+            return None
+            
+        except Exception as exc:
+            self.logger.exception("Error extracting AJAX nonce: %s", exc)
+            return None
+    
+    def _fetch_ajax_page(self, page: int, nonce: str) -> Optional[str]:
+        """Fetch articles via AJAX request."""
+        ajax_url = f"{self.BASE_CATEGORY_URL}wp-admin/admin-ajax.php"
+        
+        payload = {
+            "action": "watch_more_ar",
+            "page": str(page),
+            "view": "cancer-default",
+            "_ajax_nonce": nonce,
+        }
+        
+        try:
+            self.logger.info("Fetching AJAX page %s with payload: %s", page, payload)
+            self.logger.info("AJAX URL: %s", ajax_url)
+            
+            # Update session headers for AJAX
+            original_headers = self.session.headers.copy()
+            self.session.headers.update({
+                "X-Requested-With": "XMLHttpRequest",
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "Accept": "application/json, text/javascript, */*; q=0.01",
+                "Referer": self.BASE_CATEGORY_URL,
+                "Origin": "https://yhoccongdong.com",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
+            })
+            
+            # Use POST request for AJAX
+            time.sleep(self.delay_seconds)  # Respect delay
+            
+            resp = self.session.post(
+                ajax_url, 
+                data=payload, 
+                timeout=self.timeout_seconds
+            )
+            
+            self.logger.info("AJAX POST response status: %s", resp.status_code)
+            
+            # If POST fails, try GET
+            if resp.status_code != 200:
+                self.logger.warning("POST failed, trying GET method...")
+                get_params = payload.copy()
+                resp = self.session.get(
+                    ajax_url, 
+                    params=get_params, 
+                    timeout=self.timeout_seconds
+                )
+                self.logger.info("AJAX GET response status: %s", resp.status_code)
+            
+            # Restore original headers
+            self.session.headers = original_headers
+            
+            self.logger.info("AJAX response headers: %s", dict(resp.headers))
+            
+            if resp.status_code == 200:
+                # Log response content for debugging
+                response_text = resp.text
+                self.logger.debug("AJAX response content (first 500 chars): %s", response_text[:500])
+                
+                # Try to parse as JSON first
+                try:
+                    json_response = resp.json()
+                    self.logger.debug("Parsed JSON response: %s", list(json_response.keys()) if isinstance(json_response, dict) else type(json_response))
+                    
+                    if "html" in json_response:
+                        self.logger.debug("Got JSON response with HTML content")
+                        return json_response["html"]
+                    elif "data" in json_response:
+                        self.logger.debug("Got JSON response with data content")
+                        return json_response["data"]
+                    else:
+                        # If JSON doesn't contain expected fields, return the whole response as string
+                        self.logger.debug("Got JSON response, returning as string")
+                        return str(json_response)
+                except (ValueError, TypeError) as json_exc:
+                    self.logger.debug("Failed to parse JSON: %s, returning raw text", json_exc)
+                    # If not JSON, return raw text
+                    return response_text
+            else:
+                self.logger.warning("AJAX request failed with status %s", resp.status_code)
+                # Try to get error details
+                try:
+                    error_text = resp.text[:500]  # First 500 chars
+                    self.logger.warning("Error response: %s", error_text)
+                except:
+                    pass
+                return None
+                
+        except Exception as exc:
+            self.logger.exception("Error fetching AJAX page %s: %s", page, exc)
+            return None
+    
+    def _parse_articles_from_soup(self, soup: BeautifulSoup) -> List[ArticleLink]:
+        """Parse article links from BeautifulSoup object."""
+        links: List[ArticleLink] = []
+        
+        # Look for article containers
+        candidates: Iterable[Tag] = soup.select("a.col-12.post-item_content-title")
+        
+        if not candidates:
+            candidates = soup.select("div.post-item_content a")
+        
+        if not candidates:
+            candidates = soup.select(".post-item a")
+        
+        for a_tag in candidates:
+            if not isinstance(a_tag, Tag):
+                continue
+                
+            href = a_tag.get("href")
+            if not href:
+                continue
+                
+            # Validate URL
+            if not href.startswith("https://yhoccongdong.com/"):
+                continue
+            if "/tieu-duong/" not in href:
+                continue
+            if "/page/" in href or "#" in href or href.lower().startswith("javascript:"):
+                continue
+            
+            # Extract title
+            title = a_tag.get_text(strip=True)
+            if not title:
+                # Try to find title in h4 within the link
+                h4 = a_tag.find("h4")
+                if h4:
+                    title = h4.get_text(strip=True)
+                else:
+                    continue
+            
+            links.append(ArticleLink(title=title, url=href, category=self.CATEGORY_SLUG))
+        
         return links
 
     def _extract_title(self, soup: BeautifulSoup) -> str:
@@ -317,11 +589,11 @@ class DiabetesCrawler(BaseCrawler):
 
         return False
 
-    def crawl(self, max_articles: int = 5, base_dir: str = "data") -> None:
-        self.logger.info("Starting crawl for category %s (max_articles=%s)", self.CATEGORY_SLUG, max_articles)
+    def crawl(self, max_articles: int = 5, base_dir: str = "data", use_ajax: bool = True) -> None:
+        self.logger.info("Starting crawl for category %s (max_articles=%s, use_ajax=%s)", self.CATEGORY_SLUG, max_articles, use_ajax)
 
         # Chỉ discover tối đa số link cần thiết để tránh đi hết toàn bộ pagination.
-        links = self.get_article_links(max_links=max_articles)
+        links = self.get_article_links(max_links=max_articles, use_ajax=use_ajax)
         if not links:
             self.logger.warning("No article links discovered, aborting crawl.")
             return

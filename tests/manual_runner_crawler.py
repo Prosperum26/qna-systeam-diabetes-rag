@@ -4,7 +4,7 @@ Manual test runner for project modules.
 Usage examples (from project root):
 
   # Chạy crawler tiểu đường với 5 bài
-  python -m tests.manual_runner crawler --max-articles 5
+  python -m tests.manual_runner_crawler --max-articles 5
 
 """
 import argparse
