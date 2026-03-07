@@ -1,7 +1,12 @@
 import logging
 from typing import List, Dict, Any
 from .base import BaseRetriever
-from ..processors.query_cleaner import clean_query
+
+# Absolute import to avoid relative import issues in test scripts
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent.parent))
+from processors.query_cleaner import clean_query
 
 logger = logging.getLogger(__name__)
 
