@@ -28,7 +28,8 @@ qna-systeam-diabetes-rag/
 ├── requirements.txt       # Dependencies
 ├── data/                  # Data storage
 │   ├── raw/              # Dữ liệu crawl thô
-│   ├── processed/        # Chunks đã xử lý
+│   ├── documents/        # Dữ liệu khi processed.
+│   ├── chunked/          # Chunks đã xử lý
 │   └── vectorstore/      # ChromaDB persist
 ├── docs/                 # Documentation
 ├── tests/                # Unit tests
