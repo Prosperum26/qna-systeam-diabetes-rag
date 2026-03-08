@@ -10,6 +10,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import requests
 from bs4 import BeautifulSoup, Tag
+import brotli
 
 from src.processors import clean_article_soup, normalize_text, split_sections
 
@@ -17,7 +18,7 @@ from src.processors import clean_article_soup, normalize_text, split_sections
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/122.0 Safari/537.36"
+    "Chrome/145.0.0.0 Safari/537.36"
 )
 
 
@@ -163,8 +164,17 @@ class DiabetesCrawler(BaseCrawler):
         """
         Discover article links from the category and pagination pages.
         
-        If use_ajax is True, will use AJAX pagination instead of traditional pagination.
-        If max_links được truyền vào, sẽ dừng sớm khi đã thu thập đủ số lượng link cần thiết.
+        Args:
+            max_pages: Maximum number of pages to crawl (None for unlimited)
+            max_links: Maximum number of links to collect (None for unlimited)
+            use_ajax: Whether to use AJAX pagination (default: True)
+        
+        Returns:
+            List of unique ArticleLink objects
+            
+        Note:
+            If use_ajax is True, will use AJAX pagination instead of traditional pagination.
+            If max_links is provided, will stop early when enough links are collected.
         """
         links: List[ArticleLink] = []
         
@@ -372,7 +382,8 @@ class DiabetesCrawler(BaseCrawler):
     
     def _fetch_ajax_page(self, page: int, nonce: str) -> Optional[str]:
         """Fetch articles via AJAX request."""
-        ajax_url = f"{self.BASE_CATEGORY_URL}wp-admin/admin-ajax.php"
+        #ajax_url = f"{self.BASE_CATEGORY_URL}wp-admin/admin-ajax.php"
+        ajax_url = "https://yhoccongdong.com/tieu-duong/wp-admin/admin-ajax.php"
         
         payload = {
             "action": "watch_more_ar",
@@ -385,15 +396,23 @@ class DiabetesCrawler(BaseCrawler):
             self.logger.info("Fetching AJAX page %s with payload: %s", page, payload)
             self.logger.info("AJAX URL: %s", ajax_url)
             
-            # Update session headers for AJAX
+            # Update session headers for AJAX - match browser exactly
             original_headers = self.session.headers.copy()
             self.session.headers.update({
                 "X-Requested-With": "XMLHttpRequest",
                 "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                "Accept": "application/json, text/javascript, */*; q=0.01",
+                "Accept": "*/*",
+                "Accept-Encoding": "gzip, deflate, br, zstd",
+                "Accept-Language": "vi-VN,vi;q=0.9,fr-FR;q=0.8,fr;q=0.7,en-US;q=0.6,en;q=0.5",
                 "Referer": self.BASE_CATEGORY_URL,
                 "Origin": "https://yhoccongdong.com",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+                "sec-ch-ua": '"Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"Windows"',
+                "sec-fetch-dest": "empty",
+                "sec-fetch-mode": "cors",
+                "sec-fetch-site": "same-origin",
             })
             
             # Use POST request for AJAX
@@ -424,29 +443,40 @@ class DiabetesCrawler(BaseCrawler):
             self.logger.info("AJAX response headers: %s", dict(resp.headers))
             
             if resp.status_code == 200:
-                # Log response content for debugging
+                # Handle Brotli compression
                 response_text = resp.text
-                self.logger.debug("AJAX response content (first 500 chars): %s", response_text[:500])
+                content_encoding = resp.headers.get('content-encoding', '').lower()
                 
-                # Try to parse as JSON first
-                try:
-                    json_response = resp.json()
-                    self.logger.debug("Parsed JSON response: %s", list(json_response.keys()) if isinstance(json_response, dict) else type(json_response))
-                    
-                    if "html" in json_response:
-                        self.logger.debug("Got JSON response with HTML content")
-                        return json_response["html"]
-                    elif "data" in json_response:
-                        self.logger.debug("Got JSON response with data content")
-                        return json_response["data"]
+                if content_encoding == 'br':
+                    try:
+                        # Decompress Brotli content
+                        response_text = brotli.decompress(resp.content).decode('utf-8')
+                        self.logger.info("Successfully decompressed Brotli response")
+                    except Exception as e:
+                        self.logger.error("Failed to decompress Brotli: %s", e)
+                        response_text = resp.text  # Fallback to original
+                
+                self.logger.info("AJAX response content type: %s", resp.headers.get('content-type', 'unknown'))
+                self.logger.info("AJAX response encoding: %s", content_encoding)
+                self.logger.info("AJAX response length: %d chars", len(response_text))
+                self.logger.debug("AJAX response content (first 1000 chars): %s", response_text[:1000])
+                
+                # The response should be HTML content, not JSON
+                if response_text.strip():
+                    # Check if it's HTML with article content
+                    if '<article' in response_text or 'post-item' in response_text or 'class="post' in response_text:
+                        self.logger.info("Got HTML response with article content")
+                        return response_text
                     else:
-                        # If JSON doesn't contain expected fields, return the whole response as string
-                        self.logger.debug("Got JSON response, returning as string")
-                        return str(json_response)
-                except (ValueError, TypeError) as json_exc:
-                    self.logger.debug("Failed to parse JSON: %s, returning raw text", json_exc)
-                    # If not JSON, return raw text
-                    return response_text
+                        self.logger.warning("Response doesn't contain expected article HTML")
+                        self.logger.info("Full AJAX response for debugging:")
+                        self.logger.info("=" * 50)
+                        self.logger.info(response_text)
+                        self.logger.info("=" * 50)
+                        return response_text
+                else:
+                    self.logger.warning("Got empty response from AJAX")
+                    return None
             else:
                 self.logger.warning("AJAX request failed with status %s", resp.status_code)
                 # Try to get error details
