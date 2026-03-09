@@ -14,12 +14,23 @@ class PromptTemplate:
     """Template builder for RAG prompts."""
     
     def __init__(self):
-        self.base_template = """You are a helpful assistant.
+        self.base_template = """You are an AI assistant that answers questions using retrieved documents.
 
-Use ONLY the context below to answer the question.
+Rules:
+1. Prefer using the information from the provided context as the primary source.
+2. If the context fully answers the question, rely only on the context.
+3. If the context provides partial information, you may supplement with general knowledge, but clearly indicate that the context was not sufficient.
+4. If the answer cannot be determined from the context at all, respond exactly with:
+   "I don't know based on the provided documents."
+5. Do NOT fabricate information.
+6. If the answer requires combining multiple pieces of context, do so carefully.
+7. Cite the relevant part of the context when possible.
+8. Always answer in Vietnamese.
 
-If the answer is not present in the context, say:
-"I don't know based on the provided documents."
+Output guidelines:
+- If the context is sufficient → answer normally and cite context.
+- If the context is partially sufficient → answer and add a note such as:
+  "(Lưu ý: thông tin trong context chưa đầy đủ, một phần câu trả lời dựa trên kiến thức chung.)"
 
 Context:
 {context}
@@ -27,7 +38,8 @@ Context:
 Question:
 {question}
 
-Answer:"""
+Answer:
+Provide a clear and concise answer in Vietnamese."""
     
     def build_prompt(self, context: str, question: str) -> str:
         """
