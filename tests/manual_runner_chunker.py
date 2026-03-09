@@ -1,11 +1,15 @@
 import glob
 import json
 import os
+import sys
 from pathlib import Path
+
+# Add project root to path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
 from src.chunking.token_counter import TokenCounter
 from src.chunking.chunker import HybridChunker
-
 
 DOCUMENT_DIR = "./data/documents"
 CHUNK_DIR = "./data/chunked"
