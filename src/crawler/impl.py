@@ -155,6 +155,12 @@ class DiabetesCrawler(BaseCrawler):
         self._seen_hashes: Set[str] = set()
         self._seen_titles: Set[str] = set()
 
+    def _truncate_links(self, links: List[ArticleLink], max_links: Optional[int]) -> List[ArticleLink]:
+        """Truncate links list to max_links if specified."""
+        if max_links is not None and len(links) > max_links:
+            return links[:max_links]
+        return links
+
     def get_article_links(
         self,
         max_pages: Optional[int] = None,
@@ -269,6 +275,7 @@ class DiabetesCrawler(BaseCrawler):
         Starts from page 2 since page 1 is the initial page load.
         """
         links: List[ArticleLink] = []
+        seen_urls: Set[str] = set()  # Track URLs for O(1) duplicate detection
         page_index = 2  # Start from page 2 for AJAX requests
         
         # First, get the initial page to extract the nonce
@@ -286,12 +293,17 @@ class DiabetesCrawler(BaseCrawler):
         # Parse initial page for articles
         soup = BeautifulSoup(initial_html, "html.parser")
         initial_links = self._parse_articles_from_soup(soup)
-        links.extend(initial_links)
+        for link in initial_links:
+            if link.url not in seen_urls:
+                links.append(link)
+                seen_urls.add(link.url)
         
         self.logger.info("Found %s articles on initial page", len(initial_links))
         
+        # Apply max_links limit consistently
+        links = self._truncate_links(links, max_links)
         if max_links is not None and len(links) >= max_links:
-            return links[:max_links]
+            return links
         
         # Continue with AJAX pagination starting from page 2
         while True:
@@ -319,16 +331,17 @@ class DiabetesCrawler(BaseCrawler):
             # Add new links
             page_links_before = len(links)
             for link in ajax_links:
-                # Check for duplicates
-                if not any(existing.url == link.url for existing in links):
+                # Check for duplicates using O(1) set lookup
+                if link.url not in seen_urls:
                     links.append(link)
+                    seen_urls.add(link.url)
                     
                     # Stop early if we've reached the limit
                     if max_links is not None and len(links) >= max_links:
                         self.logger.info(
                             "Reached requested max_links=%s at AJAX page %s", max_links, page_index
                         )
-                        return links[:max_links]
+                        return self._truncate_links(links, max_links)
             
             if len(links) == page_links_before:
                 self.logger.info("No new unique articles found in AJAX response at page %s, stopping.", page_index)
@@ -340,7 +353,7 @@ class DiabetesCrawler(BaseCrawler):
             )
             page_index += 1  # Increment to next page
         
-        return links
+        return self._truncate_links(links, max_links)
     
     def _extract_ajax_nonce(self, html: str) -> Optional[str]:
         """Extract AJAX nonce from the page HTML."""
@@ -382,8 +395,7 @@ class DiabetesCrawler(BaseCrawler):
     
     def _fetch_ajax_page(self, page: int, nonce: str) -> Optional[str]:
         """Fetch articles via AJAX request."""
-        #ajax_url = f"{self.BASE_CATEGORY_URL}wp-admin/admin-ajax.php"
-        ajax_url = "https://yhoccongdong.com/tieu-duong/wp-admin/admin-ajax.php"
+        ajax_url = f"{self.BASE_CATEGORY_URL}wp-admin/admin-ajax.php"
         
         payload = {
             "action": "watch_more_ar",
@@ -398,47 +410,48 @@ class DiabetesCrawler(BaseCrawler):
             
             # Update session headers for AJAX - match browser exactly
             original_headers = self.session.headers.copy()
-            self.session.headers.update({
-                "X-Requested-With": "XMLHttpRequest",
-                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                "Accept": "*/*",
-                "Accept-Encoding": "gzip, deflate, br, zstd",
-                "Accept-Language": "vi-VN,vi;q=0.9,fr-FR;q=0.8,fr;q=0.7,en-US;q=0.6,en;q=0.5",
-                "Referer": self.BASE_CATEGORY_URL,
-                "Origin": "https://yhoccongdong.com",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
-                "sec-ch-ua": '"Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"',
-                "sec-ch-ua-mobile": "?0",
-                "sec-ch-ua-platform": '"Windows"',
-                "sec-fetch-dest": "empty",
-                "sec-fetch-mode": "cors",
-                "sec-fetch-site": "same-origin",
-            })
-            
-            # Use POST request for AJAX
-            time.sleep(self.delay_seconds)  # Respect delay
-            
-            resp = self.session.post(
-                ajax_url, 
-                data=payload, 
-                timeout=self.timeout_seconds
-            )
-            
-            self.logger.info("AJAX POST response status: %s", resp.status_code)
-            
-            # If POST fails, try GET
-            if resp.status_code != 200:
-                self.logger.warning("POST failed, trying GET method...")
-                get_params = payload.copy()
-                resp = self.session.get(
+            try:
+                self.session.headers.update({
+                    "X-Requested-With": "XMLHttpRequest",
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                    "Accept": "*/*",
+                    "Accept-Encoding": "gzip, deflate, br, zstd",
+                    "Accept-Language": "vi-VN,vi;q=0.9,fr-FR;q=0.8,fr;q=0.7,en-US;q=0.6,en;q=0.5",
+                    "Referer": self.BASE_CATEGORY_URL,
+                    "Origin": "https://yhoccongdong.com",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+                    "sec-ch-ua": '"Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"',
+                    "sec-ch-ua-mobile": "?0",
+                    "sec-ch-ua-platform": '"Windows"',
+                    "sec-fetch-dest": "empty",
+                    "sec-fetch-mode": "cors",
+                    "sec-fetch-site": "same-origin",
+                })
+                
+                # Use POST request for AJAX
+                time.sleep(self.delay_seconds)  # Respect delay
+                
+                resp = self.session.post(
                     ajax_url, 
-                    params=get_params, 
+                    data=payload, 
                     timeout=self.timeout_seconds
                 )
-                self.logger.info("AJAX GET response status: %s", resp.status_code)
-            
-            # Restore original headers
-            self.session.headers = original_headers
+                
+                self.logger.info("AJAX POST response status: %s", resp.status_code)
+                
+                # If POST fails, try GET
+                if resp.status_code != 200:
+                    self.logger.warning("POST failed, trying GET method...")
+                    get_params = payload.copy()
+                    resp = self.session.get(
+                        ajax_url, 
+                        params=get_params, 
+                        timeout=self.timeout_seconds
+                    )
+                    self.logger.info("AJAX GET response status: %s", resp.status_code)
+            finally:
+                # Always restore original headers
+                self.session.headers = original_headers
             
             self.logger.info("AJAX response headers: %s", dict(resp.headers))
             
@@ -454,7 +467,14 @@ class DiabetesCrawler(BaseCrawler):
                         self.logger.info("Successfully decompressed Brotli response")
                     except Exception as e:
                         self.logger.error("Failed to decompress Brotli: %s", e)
-                        response_text = resp.text  # Fallback to original
+                        # Try to decode as raw content first
+                        try:
+                            response_text = resp.content.decode('utf-8')
+                            self.logger.info("Successfully decoded raw content as UTF-8")
+                        except UnicodeDecodeError:
+                            # Last resort: use resp.text (may be garbage but won't crash)
+                            response_text = resp.text
+                            self.logger.warning("Using resp.text as last resort for Brotli failure")
                 
                 self.logger.info("AJAX response content type: %s", resp.headers.get('content-type', 'unknown'))
                 self.logger.info("AJAX response encoding: %s", content_encoding)
