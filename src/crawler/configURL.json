@@ -29,7 +29,7 @@
       "depth": 2,
       "category": "general",
       "max_article": 50,
-      "enabled": true,
+      "enabled": false,
       "description": "General diabetes information from American Diabetes Association"
     }
   ],

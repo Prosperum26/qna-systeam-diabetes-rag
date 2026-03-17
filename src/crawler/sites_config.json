@@ -1,0 +1,100 @@
+{
+  "sites": {
+    "yhoccongdong": {
+      "base_url": "https://yhoccongdong.com/tieu-duong/",
+      "default_category": "general",
+      "selectors": {
+        "article_links": [
+          "a.col-12.post-item_content-title",
+          "div.post-item_content a"
+        ],
+        "category_patterns": {
+          "dau-hieu": "symptoms",
+          "song-chung": "lifestyle",
+          "trieu-chung": "symptoms"
+        }
+      },
+      "pagination": {
+        "type": "ajax",
+        "ajax": {
+          "button_selector": "button.btn.button-post-more",
+          "data_attribute": "data-page",
+          "ajax_url": "https://yhoccongdong.com/tieu-duong/wp-admin/admin-ajax.php",
+          "action": "load_more_posts",
+          "loading_selector": ".ajax-loading",
+          "initial_page": 1,
+          "nonce_param": "nonce"
+        }
+      }
+    },
+    "who": {
+      "base_url": "https://www.who.int",
+      "default_category": "concepts",
+      "selectors": {
+        "article_links": [
+          "a.sf-list-vertical__item",
+          "a[href*='/news-room/fact-sheets/detail']",
+          "a[href*='/health-topics']"
+        ],
+        "category_patterns": {
+          "fact-sheets": "concepts",
+          "health-topics": "general",
+          "news-room": "general"
+        }
+      },
+      "pagination": {
+        "type": "traditional"
+      }
+    },
+    "niddk": {
+      "base_url": "https://www.niddk.nih.gov/health-information/diabetes",
+      "default_category": "general",
+      "selectors": {
+        "article_links": [
+          "a[href*='/health-information/']",
+          "a.az-list__item",
+          "a[data-testid='link']"
+        ],
+        "category_patterns": {
+          "prevention": "prevention",
+          "treatment": "treatment",
+          "symptoms": "symptoms",
+          "causes": "causes",
+          "management": "lifestyle"
+        }
+      },
+      "pagination": {
+        "type": "traditional"
+      }
+    },
+    "diabetes_org": {
+      "base_url": "https://diabetes.org/",
+      "default_category": "general",
+      "selectors": {
+        "article_links": [
+          "a[href*='/research/']",
+          "a[href*='/living-with-diabetes/']",
+          "a[href*='/diabetes-basics/']",
+          "a.card__link"
+        ],
+        "category_patterns": {
+          "research": "research",
+          "living-with-diabetes": "lifestyle",
+          "diabetes-basics": "concepts",
+          "treatment": "treatment",
+          "prevention": "prevention"
+        }
+      },
+      "pagination": {
+        "type": "traditional"
+      }
+    }
+  },
+  "global_settings": {
+    "default_delay": 2.0,
+    "default_max_retries": 3,
+    "default_timeout": 30.0,
+    "default_max_pages": 5,
+    "default_max_links": 50
+  }
+}

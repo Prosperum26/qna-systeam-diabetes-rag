@@ -26,7 +26,8 @@ from bs4 import BeautifulSoup
 # Add src directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from crawler import DiabetesCrawler
+from crawler import DiabetesCrawler, GenericCrawler
+from crawler.detection import detect_site_type, load_sites_config
 from processors import clean_article_soup, normalize_text, split_sections
 
 
@@ -84,17 +85,17 @@ def load_url_config(config_path: str = "src/crawler/configURL.json") -> Dict[str
         return {}
 
 
-def process_single_url(url: str, crawler: DiabetesCrawler, output_dir: Path, 
+def process_single_url(url: str, crawler, output_dir: Path, 
                           category: str = "general", depth: int = 1, max_article: int = 5) -> bool:
     """
     Process a single URL and save as document.
     
     Args:
         url: URL to crawl
-        crawler: DiabetesCrawler instance
+        crawler: Crawler instance (GenericCrawler or DiabetesCrawler)
         output_dir: Directory to save documents
         category: Category for the document
-        depth: Crawling depth
+        depth: Crawling depth (1 = single page, 2+ = discover + process articles)
         max_article: Maximum number of articles to extract
         
     Returns:
@@ -103,6 +104,56 @@ def process_single_url(url: str, crawler: DiabetesCrawler, output_dir: Path,
     try:
         logging.info(f"Processing URL: {url} (category: {category}, depth: {depth}, max_article: {max_article})")
         
+        # If depth = 1, process single URL only
+        if depth == 1:
+            return _process_single_article(url, crawler, output_dir, category, depth, max_article)
+        
+        # If depth > 1, discover and process multiple articles
+        if hasattr(crawler, 'get_article_links'):
+            logging.info(f"Depth > 1, discovering up to {max_article} articles...")
+            
+            # Get article links using crawler's discovery method
+            article_links = crawler.get_article_links(max_pages=5, max_links=max_article)
+            
+            if not article_links:
+                logging.warning(f"No article links discovered from {url}, falling back to single page processing")
+                return _process_single_article(url, crawler, output_dir, category, depth, max_article)
+            
+            logging.info(f"Discovered {len(article_links)} article links, processing each...")
+            
+            # Process each discovered article
+            successful = 0
+            failed = 0
+            
+            for i, article_link in enumerate(article_links, 1):
+                logging.info(f"Processing article {i}/{len(article_links)}: {article_link.url}")
+                
+                if _process_single_article(article_link.url, crawler, output_dir, article_link.category, 1, 1):
+                    successful += 1
+                else:
+                    failed += 1
+                
+                # Add delay between article processing
+                if i < len(article_links):
+                    import time
+                    time.sleep(1.0)  # Shorter delay for articles within same site
+            
+            logging.info(f"Article processing completed: {successful} successful, {failed} failed")
+            return successful > 0
+        else:
+            # Fallback for crawlers without link discovery
+            logging.warning(f"Crawler doesn't support article discovery, processing single page only")
+            return _process_single_article(url, crawler, output_dir, category, depth, max_article)
+        
+    except Exception as e:
+        logging.exception(f"Failed to process URL {url}: {e}")
+        return False
+
+
+def _process_single_article(url: str, crawler, output_dir: Path, 
+                           category: str = "general", depth: int = 1, max_article: int = 5) -> bool:
+    """Process a single article URL and save as document."""
+    try:
         # Step 1: Fetch HTML content using crawler
         html_content = crawler.fetch(url)
         if not html_content:
@@ -152,7 +203,7 @@ def process_single_url(url: str, crawler: DiabetesCrawler, output_dir: Path,
             "metadata": {
                 "crawl_time": datetime.now(timezone.utc).isoformat(),
                 "source_url": url,
-                "crawler_type": "single_url"
+                "crawler_type": "config_runner"
             }
         }
         
@@ -168,7 +219,7 @@ def process_single_url(url: str, crawler: DiabetesCrawler, output_dir: Path,
         return True
         
     except Exception as e:
-        logging.exception(f"Failed to process URL {url}: {e}")
+        logging.exception(f"Failed to process article {url}: {e}")
         return False
 
 
@@ -191,8 +242,25 @@ def run_single_url(url: str, output_dir: str = "data/documents",
     output_path.mkdir(parents=True, exist_ok=True)
     logging.info(f"Output directory: {output_path}")
     
-    # Initialize crawler
-    crawler = DiabetesCrawler(delay_seconds=2.0)
+    # Initialize crawler (GenericCrawler for multi-site support)
+    sites_config = load_sites_config()
+    site_type = detect_site_type(url, sites_config)
+    
+    if site_type in sites_config.get('sites', {}):
+        site_config = sites_config['sites'][site_type]
+        global_settings = sites_config.get('global_settings', {})
+        
+        crawler = GenericCrawler(
+            site_config=site_config,
+            delay_seconds=global_settings.get('default_delay', 2.0),
+            max_retries=global_settings.get('default_max_retries', 3),
+            timeout_seconds=global_settings.get('default_timeout', 30.0)
+        )
+        logging.info(f"Using GenericCrawler for site type: {site_type}")
+    else:
+        # Fallback to DiabetesCrawler for unknown sites
+        crawler = DiabetesCrawler(delay_seconds=2.0)
+        logging.info("Using DiabetesCrawler as fallback")
     
     # Process the single URL
     if process_single_url(url, crawler, output_path, category, depth, max_article):
@@ -224,9 +292,10 @@ def run_config_mode(config: Dict[str, Any], output_dir: str = "data/documents") 
     output_path.mkdir(parents=True, exist_ok=True)
     logging.info(f"Output directory: {output_path}")
     
-    # Initialize crawler with config settings
-    delay = global_settings.get('request_delay_seconds', 2.0)
-    crawler = DiabetesCrawler(delay_seconds=delay)
+    # Load sites configuration for crawler selection
+    sites_config = load_sites_config()
+    global_settings = sites_config.get('global_settings', {})
+    delay = global_settings.get('default_delay', 2.0)
     
     # Process each URL
     successful = 0
@@ -239,6 +308,24 @@ def run_config_mode(config: Dict[str, Any], output_dir: str = "data/documents") 
         max_article = url_config.get('max_article', global_settings.get('default_max_article', 5))
         
         logging.info(f"Processing URL {i}/{len(urls)}: {url} (category: {category}, depth: {depth}, max_article: {max_article})")
+        
+        # Create appropriate crawler for each URL (like single URL mode)
+        site_type = detect_site_type(url, sites_config)
+        
+        if site_type in sites_config.get('sites', {}):
+            site_config = sites_config['sites'][site_type]
+            
+            crawler = GenericCrawler(
+                site_config=site_config,
+                delay_seconds=global_settings.get('default_delay', 2.0),
+                max_retries=global_settings.get('default_max_retries', 3),
+                timeout_seconds=global_settings.get('default_timeout', 30.0)
+            )
+            logging.info(f"Using GenericCrawler for site type: {site_type}")
+        else:
+            # Fallback to DiabetesCrawler for unknown sites
+            crawler = DiabetesCrawler(delay_seconds=global_settings.get('default_delay', 2.0))
+            logging.info("Using DiabetesCrawler as fallback")
         
         if process_single_url(url, crawler, output_path, category, depth, max_article):
             successful += 1

@@ -1,308 +1,221 @@
-# Web Crawler Module
+# Web Crawler Module - Refactored Architecture
 
-Module này chịu trách nhiệm thu thập dữ liệu từ các nguồn web về tiểu đường, trích xuất nội dung và cấu trúc hóa cho việc xử lý tiếp theo trong hệ thống RAG.
+Module này chịu trách nhiệm thu thập dữ liệu từ các nguồn web về tiểu đường với architecture rõ ràng và dễ maintain.
 
-## 🎯 Mục tiêu
-
-- Crawl dữ liệu từ các medical websites về tiểu đường
-- Extract và làm sạch nội dung bài viết
-- Preserve cấu trúc document (headings, sections)
-- Handle rate limiting và error recovery
-- Save dữ liệu đã crawl theo cấu trúc có tổ chức
-
-## 🏗️ Kiến trúc
+## 🏗️ New Architecture
 
 ```
 src/crawler/
-├── __init__.py
-├── impl.py             # Core crawler implementation
-├── scraper.py          # Entry point và convenience functions
-└── README.md          # This file
+├── __init__.py              # Main exports
+├── impl.py                  # Backward compatibility imports
+├── detection.py             # Site detection utilities
+├── sites_config.json        # Site-specific configurations
+├── configURL.json          # URL list for crawling (main)
+├── base/
+│   └── __init__.py         # BaseCrawler with HTTP functionality
+├── generic/
+│   └── __init__.py         # GenericCrawler with config-driven approach
+├── legacy/
+│   └── __init__.py         # DiabetesCrawler (backward compatibility)
+├── components/
+│   └── __init__.py         # LinkExtractor, ArticleLink
+├── pagination/
+│   └── __init__.py         # Pagination strategies (Traditional, AJAX)
+├── utils/
+│   └── __init__.py         # URL utilities, logging
+└── README.md               # Updated documentation
 ```
 
-## 🔧 Components
+## 🎯 Separation of Concerns
 
-### BaseCrawler (`impl.py`)
+### **1. Configuration Files**
+- **`configURL.json`**: Main URL list - `crawl_runner.py` reads this to know WHAT to crawl
+- **`sites_config.json`**: Site-specific configs - GenericCrawler uses this to know HOW to crawl each site
 
-Base class cung cấp core crawling functionality:
+### **2. Core Components**
 
-```python
-class BaseCrawler:
-    def __init__(
-        self,
-        delay_seconds: float = 1.5,
-        max_retries: int = 3,
-        timeout_seconds: float = 15.0,
-        session: Optional[requests.Session] = None,
-        logger: Optional[logging.Logger] = None,
-    )
+#### **BaseCrawler** (`base/`)
+- **Responsibility**: HTTP requests, retries, session management
+- **Size**: ~200 lines (vs 1000+ before)
+- **Features**: Rate limiting, error handling, file saving
+
+#### **GenericCrawler** (`generic/`)
+- **Responsibility**: Config-driven multi-site crawling
+- **Size**: ~300 lines
+- **Features**: Site detection, link discovery, document parsing
+
+#### **DiabetesCrawler** (`legacy/`)
+- **Responsibility**: Backward compatibility for yhoccongdong.com
+- **Size**: ~400 lines
+- **Features**: Legacy logic maintained
+
+#### **LinkExtractor** (`components/`)
+- **Responsibility**: Extract article links from HTML
+- **Size**: ~150 lines
+- **Features**: CSS selectors, category detection, duplicate prevention
+
+#### **Pagination Strategies** (`pagination/`)
+- **Responsibility**: Handle different pagination types
+- **Size**: ~200 lines total
+- **Features**: Traditional pagination, AJAX pagination, factory pattern
+
+#### **Utils** (`utils/`)
+- **Responsibility**: Shared utilities
+- **Size**: ~100 lines
+- **Features**: URL normalization, logging, nonce extraction
+
+### **3. Detection Logic** (`detection.py`)
+- **Responsibility**: Site type detection from URLs
+- **Size**: ~50 lines
+- **Features**: Domain matching, fallback patterns
+
+## 🔄 Data Flow
+
+```
+1. crawl_runner.py
+   ↓ reads
+2. configURL.json (URLs to crawl)
+   ↓ detects site type
+3. detection.py
+   ↓ loads site config
+4. sites_config.json (how to crawl)
+   ↓ creates appropriate crawler
+5. GenericCrawler/DiabetesCrawler
+   ↓ uses components
+6. LinkExtractor + Pagination
+   ↓ processes content
+7. BaseCrawler (HTTP + saving)
 ```
 
-**Features:**
-- Rate limiting với configurable delays
-- Retry mechanism cho failed requests
-- Custom User-Agent headers
-- Session management
-- Comprehensive logging
+## 🚀 Benefits of Refactoring
 
-### DiabetesCrawler (`impl.py`)
+### **1. Maintainability**
+- **Single Responsibility**: Each module has one clear purpose
+- **Small Files**: <300 lines each vs 1000+ line god file
+- **Clear Dependencies**: Explicit imports and interfaces
 
-Specialized crawler cho diabetes-related content:
+### **2. Testability**
+- **Isolated Components**: Easy to unit test each module
+- **Mockable Dependencies**: Clear interfaces for mocking
+- **Focused Tests**: Test specific functionality per module
 
+### **3. Extensibility**
+- **New Sites**: Add to `sites_config.json` only
+- **New Pagination**: Add new strategy to `pagination/`
+- **New Features**: Add new component without affecting others
+
+### **4. Debugging**
+- **Clear Error Sources**: Know which module has issues
+- **Focused Logging**: Each module logs with its own name
+- **Isolated Testing**: Test components independently
+
+## 📋 Usage Examples
+
+### **Single URL Crawling**
 ```python
-class DiabetesCrawler(BaseCrawler):
-    def crawl(self, max_articles: int = 5, base_dir: str = "data")
-    def discover_article_links(self) -> List[ArticleLink]
-    def extract_article_content(self, url: str) -> Optional[Dict]
+from crawler import GenericCrawler
+from crawler.detection import detect_site_type, load_sites_config
+
+# Auto-detect site and create crawler
+sites_config = load_sites_config()
+site_type = detect_site_type(url, sites_config)
+site_config = sites_config['sites'][site_type]
+
+crawler = GenericCrawler(site_config=site_config)
+links = crawler.get_article_links(max_pages=3, max_links=50)
 ```
 
-**Features:**
-- Target specific diabetes medical websites
-- Extract article metadata (title, category, URL)
-- Parse và structure content with BeautifulSoup
-- Save articles với proper naming convention
-
-### ArticleLink Data Structure
-
+### **Config-Driven Crawling**
 ```python
-@dataclass
-class ArticleLink:
-    title: str
-    url: str
-    category: str
+from pipelines.crawl_runner import run_config_mode
+
+# Uses configURL.json + sites_config.json automatically
+run_config_mode(config, "data/documents")
 ```
 
-## 🚀 Usage
-
-### Basic Usage
-
-```python
-from src.crawler.scraper import run_diabetes_crawler
-
-# Crawl 10 articles
-run_diabetes_crawler(max_articles=10, base_dir="data")
-```
-
-### Advanced Usage
-
-```python
-from src.crawler.impl import DiabetesCrawler
-
-crawler = DiabetesCrawler(
-    delay_seconds=2.0,
-    max_retries=5,
-    timeout_seconds=20.0
-)
-
-# Discover available articles
-links = crawler.discover_article_links()
-print(f"Found {len(links)} articles")
-
-# Crawl specific number
-crawler.crawl(max_articles=20, base_dir="custom_data")
-```
-
-## 📊 Data Structure
-
-### Input Article Format
-
-```python
-article = {
-    "doc_id": "diabetes_article_001",
-    "title": "Understanding Type 2 Diabetes",
-    "url": "https://example.com/diabetes-type2",
-    "category": "Type 2 Diabetes",
-    "content": "Full article content...",
-    "sections": [
-        {
-            "heading": "Overview",
-            "content": "Section content..."
-        },
-        {
-            "heading": "Symptoms", 
-            "content": "Symptoms content..."
-        }
-    ],
-    "crawl_timestamp": "2024-01-15T10:30:00Z",
-    "source": "medical_website"
+### **Adding New Site**
+```json
+// Add to sites_config.json
+{
+  "sites": {
+    "new_site": {
+      "base_url": "https://example.com/health/",
+      "default_category": "general",
+      "selectors": {
+        "article_links": ["a.article-link"],
+        "category_patterns": {"research": "research"}
+      },
+      "pagination": {
+        "type": "traditional",
+        "url_pattern": "{base_url}/page/{page}/"
+      }
+    }
+  }
 }
 ```
 
-### Output Directory Structure
+## 🔧 Configuration Structure
 
-```
-data/
-└── raw/
-    ├── diabetes_article_001.json
-    ├── diabetes_article_002.json
-    └── ...
-```
-
-## ⚙️ Configuration
-
-### Crawler Parameters
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `delay_seconds` | 1.5 | Delay between requests |
-| `max_retries` | 3 | Maximum retry attempts |
-| `timeout_seconds` | 15.0 | Request timeout |
-| `max_articles` | 5 | Maximum articles to crawl |
-| `base_dir` | "data" | Base directory for output |
-
-### Target Websites
-
-Crawler được cấu hình cho các diabetes medical websites:
-- CDC Diabetes pages
-- Mayo Clinic Diabetes
-- WebMD Diabetes
-- American Diabetes Association
-
-## 🔍 Content Extraction
-
-### HTML Processing
-
-1. **Content Cleaning**: Remove ads, navigation, footer
-2. **Structure Preservation**: Keep headings, paragraphs, lists
-3. **Text Normalization**: Clean whitespace và special characters
-4. **Section Splitting**: Split content thành logical sections
-
-### Section Detection
-
-```python
-sections = split_sections(clean_content)
-# Returns:
-[
-    {"heading": "Introduction", "content": "..."},
-    {"heading": "Symptoms", "content": "..."},
-    {"heading": "Treatment", "content": "..."}
-]
+### **configURL.json** (WHAT to crawl)
+```json
+{
+  "urls": [
+    {
+      "url": "https://yhoccongdong.com/tieu-duong/",
+      "depth": 2,
+      "category": "general", 
+      "max_article": 50,
+      "enabled": true
+    }
+  ]
+}
 ```
 
-## 🛡️ Error Handling
-
-### Retry Strategy
-
-- **Network errors**: Retry với exponential backoff
-- **Timeout errors**: Increase timeout và retry
-- **HTTP errors**: Log và skip problematic URLs
-- **Parse errors**: Save raw HTML cho debugging
-
-### Logging
-
-```python
-# Configure logging
-import logging
-from src.crawler.impl import configure_logging
-
-configure_logging(logging.INFO)
-# Logs crawler progress, errors, and statistics
+### **sites_config.json** (HOW to crawl)
+```json
+{
+  "sites": {
+    "yhoccongdong": {
+      "base_url": "https://yhoccongdong.com/tieu-duong/",
+      "selectors": {"article_links": ["a.post-title"]},
+      "pagination": {"type": "ajax", "ajax": {...}}
+    }
+  }
+}
 ```
 
-## 📈 Performance Metrics
+## 🎯 Migration Benefits
 
-### Typical Performance
+### **Before (God File)**
+- ❌ 1000+ lines in single file
+- ❌ Multiple responsibilities mixed
+- ❌ Hard to test and debug
+- ❌ Difficult to extend
 
-- **Crawling speed**: ~1 article per 2-3 seconds
-- **Success rate**: 85-95% cho medical websites
-- **Data quality**: High-quality structured content
-- **Resource usage**: Low memory footprint
+### **After (Modular)**
+- ✅ 8 focused modules (<300 lines each)
+- ✅ Clear separation of concerns
+- ✅ Easy to test and debug
+- ✅ Simple to extend new features
 
-### Monitoring
+## 📊 Module Sizes
 
-```python
-# Track crawling progress
-for i, article in enumerate(crawled_articles, 1):
-    print(f"Crawled {i}/{max_articles}: {article['title']}")
-```
+| Module | Lines | Responsibility |
+|--------|-------|----------------|
+| `base/` | 200 | HTTP handling |
+| `generic/` | 300 | Multi-site crawling |
+| `legacy/` | 400 | Backward compatibility |
+| `components/` | 150 | Link extraction |
+| `pagination/` | 200 | Pagination strategies |
+| `utils/` | 100 | Shared utilities |
+| `detection/` | 50 | Site detection |
+| **Total** | **1400** | **Well-organized** |
 
-## 🧪 Testing
+## 🔒 Backward Compatibility
 
-```bash
-# Run crawler tests
-python -m pytest tests/test_crawler.py
+- **All existing imports work** through `impl.py`
+- **DiabetesCrawler** still available in `legacy/`
+- **Same API** for existing code
+- **Gradual migration** possible
 
-# Test with small dataset
-python -c "
-from src.crawler.impl import DiabetesCrawler
-crawler = DiabetesCrawler()
-links = crawler.discover_article_links()
-print(f'Found {len(links)} articles')
-"
-```
-
-## 🔧 Customization
-
-### Adding New Websites
-
-1. Implement custom `discover_*_links()` method
-2. Add website-specific content extraction logic
-3. Configure rate limiting cho new domain
-
-```python
-def discover_custom_links(self) -> List[ArticleLink]:
-    # Custom discovery logic
-    soup = BeautifulSoup(self.fetch(base_url), 'html.parser')
-    # Extract links
-    return links
-```
-
-### Custom Content Extraction
-
-```python
-def extract_custom_content(self, url: str) -> Optional[Dict]:
-    html = self.fetch(url)
-    if not html:
-        return None
-    
-    soup = BeautifulSoup(html, 'html.parser')
-    # Custom extraction logic
-    return article_dict
-```
-
-## 🔄 Integration
-
-Module này được sử dụng bởi:
-- `main.py` - CLI crawl command
-- `src/pipelines/chat_pipeline.py` - Data ingestion pipeline
-
-## 📝 Best Practices
-
-1. **Rate Limiting**: Respect website robots.txt và rate limits
-2. **Error Recovery**: Implement robust retry mechanisms
-3. **Data Quality**: Validate extracted content trước khi lưu
-4. **Storage**: Use structured format (JSON) cho downstream processing
-5. **Monitoring**: Log crawling statistics và errors
-
-## 🔍 Troubleshooting
-
-### Common Issues
-
-1. **403 Forbidden**: Check User-Agent headers
-2. **Rate Limited**: Increase `delay_seconds`
-3. **Parse Errors**: Validate HTML structure
-4. **Empty Content**: Check content extraction logic
-
-### Debug Tools
-
-```python
-# Enable debug logging
-import logging
-logging.basicConfig(level=logging.DEBUG)
-
-# Inspect raw HTML
-html = crawler.fetch(url)
-print(html[:500])  # Preview first 500 chars
-
-# Test extraction
-article = crawler.extract_article_content(url)
-print(f"Extracted {len(article.get('sections', []))} sections")
-```
-
-## 📋 TODO
-
-- [ ] Add support for JavaScript-rendered pages (Selenium)
-- [ ] Implement incremental crawling (only new articles)
-- [ ] Add content deduplication
-- [ ] Support for authenticated medical databases
-- [ ] Add crawling scheduling functionality
+Module crawler giờ đây **sạch, dễ debug, và dễ mở rộng**! 🎉
