@@ -40,7 +40,7 @@ def detect_site_type(url: str, sites_config: Dict[str, Any]) -> str:
     return 'generic'
 
 
-def load_sites_config(config_path: str = "src/crawler/sites_config.json") -> Dict[str, Any]:
+def load_sites_config(config_path: str = "src/crawler/config/sites_config.json") -> Dict[str, Any]:
     """
     Load sites configuration for GenericCrawler.
     

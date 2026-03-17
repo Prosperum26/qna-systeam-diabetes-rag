@@ -177,7 +177,7 @@ def quick_crawl_all(output_dir: str = "data/documents") -> dict:
         configure_logging(logging.INFO)
         
         # Load config
-        with open("src/crawler/configURL.json", 'r', encoding='utf-8') as f:
+        with open("src/crawler/config/configURL.json", 'r', encoding='utf-8') as f:
             config = json.load(f)
         
         # Run config mode

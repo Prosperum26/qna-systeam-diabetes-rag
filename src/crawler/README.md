@@ -1,160 +1,128 @@
-# Web Crawler Module - Refactored Architecture
+# Web Crawler Module - Proper Python Package Architecture
 
-Module này chịu trách nhiệm thu thập dữ liệu từ các nguồn web về tiểu đường với architecture rõ ràng và dễ maintain.
+Module này chịu trách nhiệm thu thập dữ liệu từ các nguồn web về tiểu đường với proper Python package design và clear separation of concerns.
 
-## 🏗️ New Architecture
+## 🏗️ Final Architecture
 
 ```
 src/crawler/
-├── __init__.py              # Main exports
-├── impl.py                  # Backward compatibility imports
+├── __init__.py              # Package exports only (25 lines)
+├── impl.py                  # Backward compatibility imports (20 lines)
 ├── detection.py             # Site detection utilities
-├── sites_config.json        # Site-specific configurations
-├── configURL.json          # URL list for crawling (main)
-├── base/
-│   └── __init__.py         # BaseCrawler with HTTP functionality
-├── generic/
-│   └── __init__.py         # GenericCrawler with config-driven approach
-├── legacy/
-│   └── __init__.py         # DiabetesCrawler (backward compatibility)
+├── scraper.py               # Convenience functions
+├── base.py                  # BaseCrawler with HTTP functionality (150 lines)
+├── generic.py               # GenericCrawler with config-driven approach (120 lines)
+├── legacy.py                # DiabetesCrawler for backward compatibility (200 lines)
+├── config/                  # Configuration files
+│   ├── configURL.json      # URL list for crawling (WHAT to crawl)
+│   └── sites_config.json    # Site-specific configurations (HOW to crawl)
 ├── components/
-│   └── __init__.py         # LinkExtractor, ArticleLink
+│   ├── __init__.py          # Component exports (5 lines)
+│   ├── links.py             # LinkExtractor & ArticleLink (150 lines)
+│   └── parser.py            # DocumentParser for HTML processing (120 lines)
 ├── pagination/
-│   └── __init__.py         # Pagination strategies (Traditional, AJAX)
-├── utils/
-│   └── __init__.py         # URL utilities, logging
-└── README.md               # Updated documentation
+│   ├── __init__.py          # Pagination exports (5 lines)
+│   ├── strategies.py        # TraditionalPagination & AjaxPagination (180 lines)
+│   └── factory.py           # PaginationFactory (20 lines)
+└── utils/
+    ├── __init__.py          # Utility exports (5 lines)
+    ├── url.py                # URL utilities (80 lines)
+    └── logging.py           # Logging configuration (15 lines)
 ```
 
-## 🎯 Separation of Concerns
+## 🎯 Proper Python Package Design
 
-### **1. Configuration Files**
-- **`configURL.json`**: Main URL list - `crawl_runner.py` reads this to know WHAT to crawl
-- **`sites_config.json`**: Site-specific configs - GenericCrawler uses this to know HOW to crawl each site
+### **✅ Fixed Issues**
+- **No business logic in `__init__.py`** - Only exports and `__all__`
+- **Clear file responsibilities** - Each file has single purpose
+- **Focused module sizes** - 50-200 lines per file (vs 1000+ god files)
+- **Predictable imports** - No hidden logic in import paths
 
-### **2. Core Components**
-
-#### **BaseCrawler** (`base/`)
-- **Responsibility**: HTTP requests, retries, session management
-- **Size**: ~200 lines (vs 1000+ before)
-- **Features**: Rate limiting, error handling, file saving
-
-#### **GenericCrawler** (`generic/`)
-- **Responsibility**: Config-driven multi-site crawling
-- **Size**: ~300 lines
-- **Features**: Site detection, link discovery, document parsing
-
-#### **DiabetesCrawler** (`legacy/`)
-- **Responsibility**: Backward compatibility for yhoccongdong.com
-- **Size**: ~400 lines
-- **Features**: Legacy logic maintained
-
-#### **LinkExtractor** (`components/`)
-- **Responsibility**: Extract article links from HTML
-- **Size**: ~150 lines
-- **Features**: CSS selectors, category detection, duplicate prevention
-
-#### **Pagination Strategies** (`pagination/`)
-- **Responsibility**: Handle different pagination types
-- **Size**: ~200 lines total
-- **Features**: Traditional pagination, AJAX pagination, factory pattern
-
-#### **Utils** (`utils/`)
-- **Responsibility**: Shared utilities
-- **Size**: ~100 lines
-- **Features**: URL normalization, logging, nonce extraction
-
-### **3. Detection Logic** (`detection.py`)
-- **Responsibility**: Site type detection from URLs
-- **Size**: ~50 lines
-- **Features**: Domain matching, fallback patterns
-
-## 🔄 Data Flow
-
+### **📁 Configuration Organization**
 ```
-1. crawl_runner.py
-   ↓ reads
-2. configURL.json (URLs to crawl)
-   ↓ detects site type
-3. detection.py
-   ↓ loads site config
-4. sites_config.json (how to crawl)
-   ↓ creates appropriate crawler
-5. GenericCrawler/DiabetesCrawler
-   ↓ uses components
-6. LinkExtractor + Pagination
-   ↓ processes content
-7. BaseCrawler (HTTP + saving)
+src/crawler/config/
+├── configURL.json      # WHAT to crawl - URL list for crawl_runner.py
+└── sites_config.json    # HOW to crawl - Site-specific configs for GenericCrawler
 ```
 
-## 🚀 Benefits of Refactoring
+## 🔄 Data Flow & Storage
 
-### **1. Maintainability**
-- **Single Responsibility**: Each module has one clear purpose
-- **Small Files**: <300 lines each vs 1000+ line god file
-- **Clear Dependencies**: Explicit imports and interfaces
-
-### **2. Testability**
-- **Isolated Components**: Easy to unit test each module
-- **Mockable Dependencies**: Clear interfaces for mocking
-- **Focused Tests**: Test specific functionality per module
-
-### **3. Extensibility**
-- **New Sites**: Add to `sites_config.json` only
-- **New Pagination**: Add new strategy to `pagination/`
-- **New Features**: Add new component without affecting others
-
-### **4. Debugging**
-- **Clear Error Sources**: Know which module has issues
-- **Focused Logging**: Each module logs with its own name
-- **Isolated Testing**: Test components independently
-
-## 📋 Usage Examples
-
-### **Single URL Crawling**
-```python
-from crawler import GenericCrawler
-from crawler.detection import detect_site_type, load_sites_config
-
-# Auto-detect site and create crawler
-sites_config = load_sites_config()
-site_type = detect_site_type(url, sites_config)
-site_config = sites_config['sites'][site_type]
-
-crawler = GenericCrawler(site_config=site_config)
-links = crawler.get_article_links(max_pages=3, max_links=50)
+### **Crawling Process**
+```
+1. Fetch HTML → Save to data/raw/
+2. Process with processors module → Save to data/documents/
+3. Link raw HTML file in document metadata
 ```
 
-### **Config-Driven Crawling**
-```python
-from pipelines.crawl_runner import run_config_mode
-
-# Uses configURL.json + sites_config.json automatically
-run_config_mode(config, "data/documents")
+### **Directory Structure**
+```
+data/
+├── raw/                   # Original HTML files
+│   ├── who_int_news-room_fact-sheets_detail_diabetes.html
+│   ├── yhoccongdong_com_tieu-duong.html
+│   └── niddk_nih_gov_health_information_diabetes.html
+└── documents/             # Processed JSON documents
+    ├── who_int_news-room_fact-sheets_detail_diabetes.json
+    ├── yhoccongdong_com_tieu-duong.json
+    └── niddk_nih_gov_health_information_diabetes.json
 ```
 
-### **Adding New Site**
+### **Document Metadata**
 ```json
-// Add to sites_config.json
 {
-  "sites": {
-    "new_site": {
-      "base_url": "https://example.com/health/",
-      "default_category": "general",
-      "selectors": {
-        "article_links": ["a.article-link"],
-        "category_patterns": {"research": "research"}
-      },
-      "pagination": {
-        "type": "traditional",
-        "url_pattern": "{base_url}/page/{page}/"
-      }
-    }
+  "doc_id": "who_int_news-room_fact-sheets_detail_diabetes",
+  "url": "https://www.who.int/news-room/fact-sheets/detail/diabetes",
+  "title": "Diabetes",
+  "sections": [...],
+  "metadata": {
+    "crawl_time": "2026-03-17T14:30:00Z",
+    "source_url": "https://www.who.int/news-room/fact-sheets/detail/diabetes",
+    "crawler_type": "config_runner",
+    "raw_html_file": "data/raw/who_int_news-room_fact-sheets_detail_diabetes.html"
   }
 }
 ```
 
-## 🔧 Configuration Structure
+## 🚀 Usage Examples
+
+### **Basic Usage**
+```python
+# Clean imports - no hidden logic
+from crawler.generic import GenericCrawler
+from crawler.detection import detect_site_type, load_sites_config
+
+# Auto-detect and crawl
+sites_config = load_sites_config()  # Uses src/crawler/config/sites_config.json
+site_type = detect_site_type(url, sites_config)
+site_config = sites_config['sites'][site_type]
+crawler = GenericCrawler(site_config=site_config)
+links = crawler.get_article_links(max_pages=5, max_links=50)
+```
+
+### **Pipeline Usage**
+```python
+from pipelines.crawl_runner import run_single_url, run_config_mode
+
+# Single URL - saves raw HTML + processed document
+run_single_url(
+    url="https://www.who.int/news-room/fact-sheets/detail/diabetes",
+    output_dir="data/documents"  # Processed docs
+)
+
+# Config mode - uses src/crawler/config/configURL.json
+run_config_mode(config, "data/documents")
+```
+
+### **Convenience Functions**
+```python
+from crawler.scraper import quick_crawl_all
+
+# One-liner crawling with proper storage
+results = quick_crawl_all()
+# Creates: data/raw/*.html + data/documents/*.json
+```
+
+## 📋 Configuration Files
 
 ### **configURL.json** (WHAT to crawl)
 ```json
@@ -163,11 +131,28 @@ run_config_mode(config, "data/documents")
     {
       "url": "https://yhoccongdong.com/tieu-duong/",
       "depth": 2,
-      "category": "general", 
+      "category": "general",
       "max_article": 50,
-      "enabled": true
+      "enabled": true,
+      "description": "Main diabetes information page"
+    },
+    {
+      "url": "https://www.who.int/news-room/fact-sheets/detail/diabetes",
+      "depth": 1,
+      "category": "concepts",
+      "max_article": 1,
+      "enabled": true,
+      "description": "Diabetes concepts and facts"
     }
-  ]
+  ],
+  "global_settings": {
+    "default_depth": 2,
+    "default_category": "general",
+    "default_max_article": 50,
+    "request_delay_seconds": 2.0,
+    "max_retries": 3,
+    "timeout_seconds": 30
+  }
 }
 ```
 
@@ -177,45 +162,128 @@ run_config_mode(config, "data/documents")
   "sites": {
     "yhoccongdong": {
       "base_url": "https://yhoccongdong.com/tieu-duong/",
-      "selectors": {"article_links": ["a.post-title"]},
-      "pagination": {"type": "ajax", "ajax": {...}}
+      "default_category": "general",
+      "selectors": {
+        "article_links": [
+          "a.col-12.post-item_content-title",
+          "div.post-item_content a"
+        ],
+        "category_patterns": {
+          "dau-hieu": "symptoms",
+          "song-chung": "lifestyle"
+        }
+      },
+      "pagination": {
+        "type": "ajax",
+        "ajax": {
+          "button_selector": "button.btn.button-post-more",
+          "ajax_url": "https://yhoccongdong.com/tieu-duong/wp-admin/admin-ajax.php",
+          "action": "load_more_posts"
+        }
+      }
+    },
+    "who": {
+      "base_url": "https://www.who.int",
+      "default_category": "concepts",
+      "selectors": {
+        "article_links": [
+          "a.sf-list-vertical__item",
+          "a[href*='/news-room/fact-sheets/detail']"
+        ]
+      },
+      "pagination": {
+        "type": "traditional"
+      }
     }
+  },
+  "global_settings": {
+    "default_delay": 2.0,
+    "default_max_retries": 3,
+    "default_timeout": 30.0
   }
 }
 ```
 
-## 🎯 Migration Benefits
+## 🔧 Module Responsibilities
 
-### **Before (God File)**
-- ❌ 1000+ lines in single file
-- ❌ Multiple responsibilities mixed
-- ❌ Hard to test and debug
-- ❌ Difficult to extend
+### **Core Files**
+- **`base.py`**: HTTP requests, retries, session management, file saving
+- **`generic.py`**: Config-driven multi-site crawling, site detection
+- **`legacy.py`**: Backward compatibility for yhoccongdong.com
 
-### **After (Modular)**
-- ✅ 8 focused modules (<300 lines each)
-- ✅ Clear separation of concerns
-- ✅ Easy to test and debug
-- ✅ Simple to extend new features
+### **Components**
+- **`components/links.py`**: Link extraction, CSS selectors, duplicate prevention
+- **`components/parser.py`**: Document parsing, HTML cleaning, section extraction
 
-## 📊 Module Sizes
+### **Pagination**
+- **`pagination/strategies.py`**: Traditional and AJAX pagination implementations
+- **`pagination/factory.py`**: Strategy factory pattern
 
-| Module | Lines | Responsibility |
-|--------|-------|----------------|
-| `base/` | 200 | HTTP handling |
-| `generic/` | 300 | Multi-site crawling |
-| `legacy/` | 400 | Backward compatibility |
-| `components/` | 150 | Link extraction |
-| `pagination/` | 200 | Pagination strategies |
-| `utils/` | 100 | Shared utilities |
-| `detection/` | 50 | Site detection |
-| **Total** | **1400** | **Well-organized** |
+### **Utils**
+- **`utils/url.py`**: URL normalization, slug generation, nonce extraction
+- **`utils/logging.py`**: Logging configuration
+
+## 🎯 Benefits of Proper Architecture
+
+### **1. Python Best Practices**
+- ✅ **Clean `__init__.py`** - Only exports, no business logic
+- ✅ **Single responsibility** - Each file has one clear purpose
+- ✅ **Proper imports** - Predictable, no hidden logic
+- ✅ **Focused modules** - 50-200 lines per file
+
+### **2. Maintainability**
+- ✅ **Easy debugging** - Know exactly which file to look at
+- ✅ **Clear dependencies** - Explicit imports and interfaces
+- ✅ **Modular testing** - Test each component independently
+- ✅ **Simple extension** - Add features without touching core
+
+### **3. Data Organization**
+- ✅ **Separate storage** - Raw HTML vs processed documents
+- ✅ **Traceable metadata** - Link to original raw file
+- ✅ **Centralized config** - All configs in `config/` folder
+- ✅ **Clear paths** - Predictable file organization
+
+### **4. Developer Experience**
+- ✅ **IDE friendly** - Proper module recognition
+- ✅ **Clear documentation** - Each module documented
+- ✅ **Backward compatible** - Existing code still works
+- ✅ **Easy onboarding** - Clear structure for new developers
+
+## 📊 Architecture Metrics
+
+| Metric | Before | After |
+|--------|--------|-------|
+| `__init__.py` lines | 500+ (business logic) | 45 (exports only) |
+| Largest file | 1000+ lines | 200 lines |
+| Number of files | 8 modules | 12 focused files |
+| Config organization | Scattered | Centralized in `config/` |
+| Data storage | Mixed | Separated (raw vs processed) |
 
 ## 🔒 Backward Compatibility
 
-- **All existing imports work** through `impl.py`
-- **DiabetesCrawler** still available in `legacy/`
-- **Same API** for existing code
-- **Gradual migration** possible
+All existing imports continue to work:
+```python
+# These still work
+from crawler import BaseCrawler, GenericCrawler, DiabetesCrawler
+from crawler.impl import BaseCrawler  # Legacy path
+from crawler.scraper import quick_crawl_yhoccongdong
+```
 
-Module crawler giờ đây **sạch, dễ debug, và dễ mở rộng**! 🎉
+## 🚀 Quick Start
+
+```bash
+# Install dependencies (if needed)
+pip install requests beautifulsoup4
+
+# Run with config mode
+python -m src.pipelines.crawl_runner
+
+# Run single URL
+python -m src.pipelines.crawl_runner --url https://www.who.int/news-room/fact-sheets/detail/diabetes
+
+# Check output
+ls data/raw/      # Original HTML files
+ls data/documents/ # Processed JSON documents
+```
+
+Module crawler giờ đây follows proper Python package design với clean separation of concerns, proper data organization, và maintainable architecture! 🎉

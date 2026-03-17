@@ -9,8 +9,8 @@ from datetime import datetime, timezone
 
 from bs4 import BeautifulSoup, Tag
 
-from ..base import BaseCrawler
-from ..utils import normalize_url
+from .base import BaseCrawler
+from .utils.url import normalize_url
 
 
 class ArticleLink:
@@ -318,7 +318,7 @@ class DiabetesCrawler(BaseCrawler):
     def _create_doc_id(self, url: str) -> str:
         """Create document ID from URL."""
         try:
-            from ..utils import create_slug_from_url
+            from .utils.url import create_slug_from_url
             return create_slug_from_url(url)
         except Exception:
             parsed = urlparse(url)

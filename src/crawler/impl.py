@@ -1,4 +1,7 @@
-"""Refactored crawler module with clear separation of concerns."""
+"""Backward compatibility exports for the crawler package.
+
+This file provides the same interface as the old impl.py for backward compatibility.
+"""
 
 # Core components
 from .base import BaseCrawler

@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from crawler import DiabetesCrawler, GenericCrawler
 from crawler.detection import detect_site_type, load_sites_config
+from crawler.components import ArticleLink
 from processors import clean_article_soup, normalize_text, split_sections
 
 
@@ -53,7 +54,7 @@ def create_slug_from_url(url: str) -> str:
     return safe_slug[:100]  # Limit length
 
 
-def load_url_config(config_path: str = "src/crawler/configURL.json") -> Dict[str, Any]:
+def load_url_config(config_path: str = "src/crawler/config/configURL.json") -> Dict[str, Any]:
     """
     Load URL configuration from JSON file.
     
@@ -162,7 +163,17 @@ def _process_single_article(url: str, crawler, output_dir: Path,
         
         logging.info("HTML fetched successfully")
         
-        # Step 2: Process HTML using processors
+        # Step 2: Save raw HTML to data/raw
+        raw_slug = create_slug_from_url(url)
+        raw_output_dir = Path("data/raw")
+        raw_output_dir.mkdir(parents=True, exist_ok=True)
+        raw_file_path = raw_output_dir / f"{raw_slug}.html"
+        
+        with open(raw_file_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+        logging.info(f"Raw HTML saved to: {raw_file_path}")
+        
+        # Step 3: Process HTML using processors
         logging.info("Extracting clean text")
         soup = BeautifulSoup(html_content, "html.parser")
         
@@ -177,7 +188,7 @@ def _process_single_article(url: str, crawler, output_dir: Path,
         
         logging.info(f"Extracted {len(sections)} sections")
         
-        # Step 3: Build document object
+        # Step 4: Build document object
         logging.info("Building document object")
         
         # Extract title
@@ -203,11 +214,12 @@ def _process_single_article(url: str, crawler, output_dir: Path,
             "metadata": {
                 "crawl_time": datetime.now(timezone.utc).isoformat(),
                 "source_url": url,
-                "crawler_type": "config_runner"
+                "crawler_type": "config_runner",
+                "raw_html_file": str(raw_file_path)
             }
         }
         
-        # Step 4: Save document as JSON
+        # Step 5: Save processed document to data/documents
         output_file = output_dir / f"{document['doc_id']}.json"
         
         with open(output_file, 'w', encoding='utf-8') as f:
@@ -271,7 +283,7 @@ def run_single_url(url: str, output_dir: str = "data/documents",
 
 def run_config_mode(config: Dict[str, Any], output_dir: str = "data/documents") -> None:
     """
-    Run pipeline using configuration file.
+    Run pipeline using configuration file with sequential URL processing.
     
     Args:
         config: Configuration dictionary containing URLs and settings
@@ -294,22 +306,23 @@ def run_config_mode(config: Dict[str, Any], output_dir: str = "data/documents") 
     
     # Load sites configuration for crawler selection
     sites_config = load_sites_config()
-    global_settings = sites_config.get('global_settings', {})
-    delay = global_settings.get('default_delay', 2.0)
+    global_settings_config = sites_config.get('global_settings', {})
+    delay = global_settings_config.get('default_delay', 2.0)
     
-    # Process each URL
-    successful = 0
-    failed = 0
+    # Process each URL sequentially (as requested)
+    total_successful = 0
+    total_failed = 0
     
-    for i, url_config in enumerate(urls, 1):
+    for url_index, url_config in enumerate(urls, 1):
         url = url_config['url']
         category = url_config.get('category', global_settings.get('default_category', 'general'))
         depth = url_config.get('depth', global_settings.get('default_depth', 1))
         max_article = url_config.get('max_article', global_settings.get('default_max_article', 5))
         
-        logging.info(f"Processing URL {i}/{len(urls)}: {url} (category: {category}, depth: {depth}, max_article: {max_article})")
+        logging.info(f"=== Processing URL {url_index}/{len(urls)}: {url} ===")
+        logging.info(f"Category: {category}, Depth: {depth}, Max Articles: {max_article}")
         
-        # Create appropriate crawler for each URL (like single URL mode)
+        # Create appropriate crawler for this URL
         site_type = detect_site_type(url, sites_config)
         
         if site_type in sites_config.get('sites', {}):
@@ -317,32 +330,88 @@ def run_config_mode(config: Dict[str, Any], output_dir: str = "data/documents") 
             
             crawler = GenericCrawler(
                 site_config=site_config,
-                delay_seconds=global_settings.get('default_delay', 2.0),
-                max_retries=global_settings.get('default_max_retries', 3),
-                timeout_seconds=global_settings.get('default_timeout', 30.0)
+                delay_seconds=global_settings_config.get('default_delay', 2.0),
+                max_retries=global_settings_config.get('default_max_retries', 3),
+                timeout_seconds=global_settings_config.get('default_timeout', 30.0)
             )
             logging.info(f"Using GenericCrawler for site type: {site_type}")
         else:
             # Fallback to DiabetesCrawler for unknown sites
-            crawler = DiabetesCrawler(delay_seconds=global_settings.get('default_delay', 2.0))
+            crawler = DiabetesCrawler(delay_seconds=global_settings_config.get('default_delay', 2.0))
             logging.info("Using DiabetesCrawler as fallback")
         
-        if process_single_url(url, crawler, output_path, category, depth, max_article):
-            successful += 1
-        else:
-            failed += 1
+        # Process this URL based on depth
+        if depth > 1 and max_article > 1:
+            # Step 1: Collect all article links from this URL
+            logging.info(f"Step 1: Collecting article links from {url}")
+            
+            try:
+                article_links = crawler.get_article_links(max_pages=5, max_links=max_article)
+                logging.info(f"Found {len(article_links)} article links from {url}")
+                
+                if not article_links:
+                    logging.warning("No article links found, skipping this URL")
+                    continue
+                
+                # Remove duplicates within this URL
+                unique_links = []
+                seen_urls = set()
+                for link in article_links:
+                    if link.url not in seen_urls:
+                        unique_links.append(link)
+                        seen_urls.add(link.url)
+                
+                logging.info(f"After deduplication: {len(unique_links)} unique links")
+                
+                # Step 2: Crawl all articles from this URL
+                logging.info(f"Step 2: Crawling {len(unique_links)} articles from {url}")
+                url_successful = 0
+                url_failed = 0
+                
+                for i, article_link in enumerate(unique_links, 1):
+                    logging.info(f"Crawling article {i}/{len(unique_links)}: {article_link.url}")
+                    
+                    if _process_single_article(article_link.url, crawler, output_path, article_link.category, 1, 1):
+                        url_successful += 1
+                    else:
+                        url_failed += 1
+                    
+                    # Short delay between articles
+                    if i < len(unique_links):
+                        import time
+                        time.sleep(0.5)
+                
+                logging.info(f"URL {url} completed: {url_successful} successful, {url_failed} failed")
+                total_successful += url_successful
+                total_failed += url_failed
+                
+            except Exception as e:
+                logging.error(f"Failed to process URL {url}: {e}")
+                total_failed += max_article  # Count as failed
         
-        # Add delay between requests
-        if i < len(urls):
-            logging.info("Waiting before next request...")
+        else:
+            # depth = 1 or max_article = 1: Process the URL directly
+            logging.info(f"Processing single URL: {url}")
+            
+            if _process_single_article(url, crawler, output_path, category, depth, max_article):
+                total_successful += 1
+                logging.info(f"URL {url} processed successfully")
+            else:
+                total_failed += 1
+                logging.error(f"URL {url} failed to process")
+        
+        # Add delay between URLs (except last one)
+        if url_index < len(urls):
+            logging.info(f"Waiting before next URL...")
             import time
             time.sleep(delay)
     
-    # Summary
-    logging.info("Config-based crawl pipeline completed!")
-    logging.info(f"Successful: {successful}")
-    logging.info(f"Failed: {failed}")
-    logging.info(f"Total: {len(urls)}")
+    # Final summary
+    logging.info("=== Config-based crawl pipeline completed! ===")
+    logging.info(f"Total URLs processed: {len(urls)}")
+    logging.info(f"Total articles crawled successfully: {total_successful}")
+    logging.info(f"Total articles failed: {total_failed}")
+    logging.info(f"Success rate: {total_successful/(total_successful+total_failed)*100:.1f}%" if (total_successful+total_failed) > 0 else "N/A")
 
 
 def main() -> None:
@@ -381,8 +450,8 @@ def main() -> None:
     # Config mode parameters
     parser.add_argument(
         "--config",
-        default="src/crawler/configURL.json",
-        help="Path to URL configuration file (default: src/crawler/configURL.json)"
+        default="src/crawler/config/configURL.json",
+        help="Path to URL configuration file (default: src/crawler/config/configURL.json)"
     )
     parser.add_argument(
         "--show-config",

@@ -17,13 +17,13 @@
       "pagination": {
         "type": "ajax",
         "ajax": {
-          "button_selector": "button.btn.button-post-more",
-          "data_attribute": "data-page",
           "ajax_url": "https://yhoccongdong.com/tieu-duong/wp-admin/admin-ajax.php",
-          "action": "load_more_posts",
-          "loading_selector": ".ajax-loading",
+          "action": "watch_more_ar",
+          "view": "cancer-default",
+          "nonce_param": "_ajax_nonce",
           "initial_page": 1,
-          "nonce_param": "nonce"
+          "button_selector": "button.btn.button-post-more",
+          "loading_selector": ".ajax-loading"
         }
       }
     },
@@ -51,13 +51,11 @@
       "default_category": "general",
       "selectors": {
         "article_links": [
-          "a[href*='/health-information/']",
-          "a.az-list__item",
-          "a[data-testid='link']"
+          "a[href]"
         ],
         "category_patterns": {
           "prevention": "prevention",
-          "treatment": "treatment",
+          "treatment": "treatment", 
           "symptoms": "symptoms",
           "causes": "causes",
           "management": "lifestyle"
