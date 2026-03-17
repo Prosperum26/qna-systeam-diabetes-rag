@@ -15,7 +15,6 @@ Module này cung cấp các utilities cho việc xử lý và làm sạch văn b
 ```
 src/processors/
 ├── __init__.py
-├── chunker.py          # Document chunking (placeholder)
 ├── cleaner.py          # HTML content cleaning
 ├── normalizer.py       # Text normalization
 ├── query_cleaner.py    # Query text cleaning

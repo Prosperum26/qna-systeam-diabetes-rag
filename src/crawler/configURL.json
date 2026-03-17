@@ -1,0 +1,44 @@
+{
+  "urls": [
+    {
+      "url": "https://yhoccongdong.com/tieu-duong/",
+      "depth": 2,
+      "category": "general",
+      "max_article": 50,
+      "enabled": true,
+      "description": "Main diabetes information page"
+    },
+    {
+      "url": "https://www.who.int/news-room/fact-sheets/detail/diabetes",
+      "depth": 1,
+      "category": "concepts",
+      "max_article": 1,
+      "enabled": true,
+      "description": "Diabetes concepts and facts"
+    },
+    {
+      "url": "https://www.niddk.nih.gov/health-information/diabetes",
+      "depth": 2,
+      "category": "general",
+      "max_article": 50,
+      "enabled": true,
+      "description": "General diabetes information from NIDDK"
+    },
+    {
+      "url": "https://diabetes.org/",
+      "depth": 2,
+      "category": "general",
+      "max_article": 50,
+      "enabled": true,
+      "description": "General diabetes information from American Diabetes Association"
+    }
+  ],
+  "global_settings": {
+    "default_depth": 2,
+    "default_category": "general",
+    "default_max_article": 50,
+    "request_delay_seconds": 2.0,
+    "max_retries": 3,
+    "timeout_seconds": 30
+  }
+}

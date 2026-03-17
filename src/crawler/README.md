@@ -133,10 +133,9 @@ article = {
 ```
 data/
 └── raw/
-    └── diabetes/
-        ├── diabetes_article_001.json
-        ├── diabetes_article_002.json
-        └── ...
+    ├── diabetes_article_001.json
+    ├── diabetes_article_002.json
+    └── ...
 ```
 
 ## ⚙️ Configuration

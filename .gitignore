@@ -14,3 +14,6 @@ data/
 # IDE / tooling
 .cursor/
 .vscode/
+
+# Web HTML example
+exampleWebHtml/
