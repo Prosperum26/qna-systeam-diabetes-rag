@@ -6,7 +6,8 @@
       "selectors": {
         "article_links": [
           "a.col-12.post-item_content-title",
-          "div.post-item_content a"
+          "div.post-item_content a",
+          ".post-item a"
         ],
         "category_patterns": {
           "dau-hieu": "symptoms",
@@ -23,7 +24,28 @@
           "nonce_param": "_ajax_nonce",
           "initial_page": 1,
           "button_selector": "button.btn.button-post-more",
-          "loading_selector": ".ajax-loading"
+          "loading_selector": ".ajax-loading",
+          "headers": {
+            "X-Requested-With": "XMLHttpRequest",
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "Accept": "*/*",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
+            "Accept-Language": "vi-VN,vi;q=0.9,fr-FR;q=0.8,fr;q=0.7,en-US;q=0.6,en;q=0.5",
+            "Origin": "https://yhoccongdong.com",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+            "sec-ch-ua": "\"Not:A-Brand\";v=\"99\", \"Google Chrome\";v=\"145\", \"Chromium\";v=\"145\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"Windows\"",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin"
+          },
+          "nonce_patterns": [
+            "_ajax_nonce\"\\s*:\\s*\"([a-f0-9]+)\"",
+            "_ajax_nonce\"\\s*=\\s*\"([a-f0-9]+)\"",
+            "nonce\"\\s*:\\s*\"([a-f0-9]+)\"",
+            "nonce_ajax\"\\s*=\\s*{[^}]*_ajax_nonce\"\\s*:\\s*\"([a-f0-9]+)\""
+          ]
         }
       }
     },
