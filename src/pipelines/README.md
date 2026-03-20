@@ -1,29 +1,508 @@
-# Chat Pipeline Module
+# Pipelines Module
 
-Module này cung cấp pipeline hoàn chỉnh cho hệ thống RAG chatbot, kết nối tất cả các thành phần từ vector retrieval đến LLM generation để tạo ra một hệ thống hỏi đáp thông minh.
+Module này cung cấp các pipeline hoàn chỉnh cho hệ thống RAG, bao gồm cả data crawling và chatbot functionality.
 
-## 🎯 Mục tiêu
+## Mục tiêu
 
-- Tích hợp tất cả modules thành một pipeline hoàn chỉnh
-- Cung cấp interface đơn giản cho end-to-end RAG operations
-- Hỗ trợ cả programmatic API và CLI interface
-- Optimize performance với caching và batch processing
-- Provide comprehensive logging và monitoring
+- **Data Crawling**: Tự động thu thập và xử lý dữ liệu từ nhiều nguồn
+- **RAG Pipeline**: Kết hợp vector retrieval với LLM generation
+- **Multi-Source Support**: Hỗ trợ nhiều loại website và cấu hình
+- **Scalability**: Thiết kế để xử lý lượng lớn dữ liệu
+- **Monitoring**: Comprehensive logging và performance tracking
 
-## 🏗️ Kiến trúc
+## Kiến trúc
 
 ```
 src/pipelines/
-├── chat_pipeline.py    # Main RAG pipeline implementation
+├── crawl_runner.py    # Data crawling pipeline
+├── chat_pipeline.py   # RAG chat pipeline
+├── build_knowledge.py # Knowledge building pipeline
 └── README.md          # This file
 ```
 
-## 🔧 Components
+---
 
-### RAGChatPipeline (`chat_pipeline.py`)
+## Data Crawling Pipeline (`crawl_runner.py`)
 
-Core pipeline class orchestrates entire RAG flow:
+### Overview
+`crawl_runner.py` là orchestrator chính cho việc thu thập dữ liệu web, hỗ trợ 2 mode:
+- **Config Mode**: Crawl nhiều URLs từ file config
+- **Single URL Mode**: Crawl 1 URL cụ thể
 
+### Architecture Flow
+
+```
+Config Loading → Site Detection → Crawler Selection → Link Discovery → Article Processing → Data Storage
+```
+
+### Key Features
+
+#### **1. Multi-Site Support**
+```python
+# Automatic site detection
+site_type = detect_site_type(url, sites_config)
+
+# Dynamic crawler selection
+if site_type in sites_config.get('sites', {}):
+    crawler = GenericCrawler(site_config=site_config, ...)
+else:
+    crawler = DiabetesCrawler(delay_seconds=2.0)
+```
+
+#### **2. Sequential Processing**
+```python
+# Process URLs one by one (as requested)
+for url_index, url_config in enumerate(urls, 1):
+    # Phase 1: Collect all links from this URL
+    article_links = crawler.get_article_links(max_pages=5, max_links=max_article)
+    
+    # Phase 2: Process all articles from this URL
+    for article_link in unique_links:
+        _process_single_article(article_link.url, ...)
+    
+    # Only after ALL articles done → move to next URL
+```
+
+#### **3. Dual Storage Strategy**
+```
+data/
+├── raw/           # Original HTML files
+│   ├── yhoccongdong_com_article1.html
+│   └── who_int_fact_sheet.html
+└── documents/     # Processed JSON documents
+    ├── yhoccongdong_com_article1.json
+    └── who_int_fact_sheet.json
+```
+
+### Usage Examples
+
+#### **Config Mode (Default)**
+```bash
+# Run with default config
+python -m src.pipelines.crawl_runner
+
+# Custom config file
+python -m src.pipelines.crawl_runner --config custom_config.json
+
+# Show configuration
+python -m src.pipelines.crawl_runner --show-config
+```
+
+#### **Single URL Mode**
+```bash
+# Basic single URL
+python -m src.pipelines.crawl_runner --url https://example.com
+
+# With custom parameters
+python -m src.pipelines.crawl_runner \
+  --url https://yhoccongdong.com/tieu-duong/ \
+  --category diabetes \
+  --depth 2 \
+  --max-article 50
+
+# Custom output directory
+python -m src.pipelines.crawl_runner \
+  --url https://example.com \
+  --output-dir custom/data
+```
+
+#### **Configuration Structure**
+```json
+{
+  "urls": [
+    {
+      "url": "https://yhoccongdong.com/tieu-duong/",
+      "category": "diabetes",
+      "depth": 2,
+      "max_article": 50,
+      "enabled": true
+    },
+    {
+      "url": "https://www.who.int/news-room/fact-sheets/detail/diabetes",
+      "category": "medical",
+      "depth": 1,
+      "max_article": 1,
+      "enabled": true
+    }
+  ],
+  "global_settings": {
+    "default_category": "general",
+    "default_depth": 1,
+    "default_max_article": 5,
+    "default_delay": 2.0
+  }
+}
+```
+
+### Processing Steps
+
+#### **Single Article Processing**
+```python
+def _process_single_article(url, crawler, output_path, category, depth, max_article):
+    # Step 1: Fetch HTML
+    html_content = crawler.fetch(url)
+    
+    # Step 2: Save Raw HTML
+    raw_file_path = "data/raw/article.html"
+    with open(raw_file_path, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+    
+    # Step 3: Process Content
+    soup = BeautifulSoup(html_content, "html.parser")
+    clean_article_soup(soup)
+    sections = split_sections(soup.body)
+    
+    # Step 4: Build Document
+    document = {
+        "doc_id": create_slug_from_url(url),
+        "url": crawler.normalize_url(url),
+        "title": extract_title(soup),
+        "category": category,
+        "sections": sections,
+        "metadata": {
+            "crawl_time": datetime.now(timezone.utc).isoformat(),
+            "source_url": url,
+            "raw_html_file": raw_file_path
+        }
+    }
+    
+    # Step 5: Save Processed Document
+    output_file = "data/documents/article.json"
+    with open(output_file, 'w', encoding='utf-8') as f:
+        json.dump(document, f, ensure_ascii=False, indent=2)
+```
+
+### Crawler Types
+
+#### **GenericCrawler (Config-Driven)**
+- **Multi-site support**: Đọc config từ `sites_config.json`
+- **AJAX pagination**: Hỗ trợ "Load More" buttons
+- **Traditional pagination**: Hỗ trợ `/page/2/` style
+- **Flexible selectors**: CSS selectors tùy chỉnh per site
+
+#### **DiabetesCrawler (Legacy)**
+- **Hardcoded logic**: Chuyên cho yhoccongdong.com
+- **AJAX optimized**: Implementation chuẩn xác cho WordPress AJAX
+- **Fallback option**: Khi GenericCrawler không hoạt động
+
+### AJAX Pagination Features
+
+#### **Config-Driven AJAX**
+```json
+{
+  "pagination": {
+    "type": "ajax",
+    "ajax": {
+      "ajax_url": "https://site.com/wp-admin/admin-ajax.php",
+      "action": "watch_more_ar",
+      "view": "cancer-default",
+      "nonce_param": "_ajax_nonce",
+      "headers": {
+        "X-Requested-With": "XMLHttpRequest",
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
+      },
+      "nonce_patterns": [
+        "_ajax_nonce\"\\s*:\\s*\"([a-f0-9]+)\""
+      ]
+    }
+  }
+}
+```
+
+#### **Robust Implementation**
+- **Multiple nonce patterns**: Tìm nonce theo nhiều cách
+- **Brotli compression**: Xử lý response nén
+- **POST + GET fallback**: Nếu POST fail thì thử GET
+- **Header management**: Khôi phục headers sau request
+
+### Performance Features
+
+#### **Rate Limiting**
+```python
+# Between URLs: Respect rate limits
+time.sleep(delay)  # 2s default
+
+# Between articles: Continuous processing
+time.sleep(0.5)  # Shorter delay
+```
+
+#### **Deduplication**
+```python
+# O(1) duplicate detection
+seen_urls = set()
+for link in article_links:
+    if link.url not in seen_urls:
+        unique_links.append(link)
+        seen_urls.add(link.url)
+```
+
+---
+
+## 🧠 Knowledge Building Pipeline (`build_knowledge.py`)
+
+### Overview
+`build_knowledge.py` là pipeline xử lý documents đã crawled để xây dựng knowledge base cho RAG system:
+- **Load Documents**: Đọc JSON files từ `data/documents/`
+- **Chunk Documents**: Chia nhỏ documents thành chunks
+- **Generate Embeddings**: Tạo vector embeddings cho chunks
+- **Store Vectors**: Lưu vào vector database (ChromaDB)
+
+### Architecture Flow
+
+### Architecture Flow
+
+```
+Document Loading → Chunking → Embedding Generation → Vector Storage
+```
+
+### Key Features
+
+#### **1. Hybrid Chunking Strategy**
+```python
+chunker = HybridChunker(
+    token_counter=token_counter,
+    max_tokens_per_chunk=450,
+    chunk_size=400,
+    overlap=60,
+    min_section_tokens=120
+)
+```
+
+#### **2. Batch Processing**
+- **Embedding batches**: 32 chunks per batch
+- **Vector storage batches**: 128 vectors per batch
+- **GPU/CPU auto-detection**: Tự động chọn device
+
+#### **3. Robust Error Handling**
+- **Document-level error recovery**: Skip corrupted files
+- **Batch-level fallback**: Zero embeddings cho failed batches
+- **Validation**: Kiểm tra data consistency
+
+### Usage Examples
+
+#### **Basic Usage**
+```bash
+# Run with default settings
+python -m src.pipelines.build_knowledge
+
+# Custom data directory
+python -m src.pipelines.build_knowledge --data-dir custom/documents
+
+# Custom vector store path
+python -m src.pipelines.build_knowledge --store-path custom/vectorstore
+
+# Custom batch size
+python -m src.pipelines.build_knowledge --batch-size 64
+```
+
+#### **Advanced Usage**
+```bash
+# High-performance settings
+python -m src.pipelines.build_knowledge \
+  --data-dir data/documents \
+  --store-path data/vectorstore \
+  --batch-size 64 \
+  --log-level DEBUG
+
+# Memory-efficient settings
+python -m src.pipelines.build_knowledge \
+  --batch-size 16 \
+  --log-level INFO
+```
+
+### Processing Steps
+
+#### **Step 1: Document Loading**
+```python
+def load_documents(data_dir: str = "data/documents") -> List[Dict]:
+    # Load all JSON files
+    json_files = list(Path(data_dir).glob("*.json"))
+    
+    for file_path in json_files:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            doc = json.load(f)
+            documents.append(doc)
+    
+    return documents
+```
+
+#### **Step 2: Document Chunking**
+```python
+def chunk_documents(documents: List[Dict]) -> List[Dict]:
+    chunker = HybridChunker(
+        max_tokens_per_chunk=450,
+        chunk_size=400,
+        overlap=60
+    )
+    
+    all_chunks = []
+    for doc in documents:
+        chunks = chunker.chunk_document(doc)
+        all_chunks.extend(chunks)
+    
+    return all_chunks
+```
+
+#### **Step 3: Embedding Generation**
+```python
+def generate_embeddings(chunks: List[Dict], batch_size: int = 32) -> List[List[float]]:
+    # Auto device detection
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    
+    embedder = Embedder(
+        model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        device=device
+    )
+    
+    # Process in batches
+    for i in range(0, len(texts), batch_size):
+        batch_texts = texts[i:i + batch_size]
+        batch_embeddings = embedder.embed_batch(batch_texts)
+        embeddings.extend(batch_embeddings)
+    
+    return embeddings
+```
+
+#### **Step 4: Vector Storage**
+```python
+def store_vectors(chunks, embeddings, store_path):
+    # Create ChromaDB vector store
+    vectorstore = create_vectorstore(
+        path=Path(store_path),
+        store_type="chroma"
+    )
+    
+    # Prepare metadata
+    metadatas = []
+    for chunk in chunks:
+        metadata = {
+            "doc_id": chunk.get("doc_id", ""),
+            "title": chunk.get("title", ""),
+            "heading": chunk.get("heading", ""),
+            "position": chunk.get("position", 0),
+            "url": chunk.get("url", ""),
+            "category": chunk.get("category", "")
+        }
+        metadatas.append(metadata)
+    
+    # Store in batches
+    vectorstore.add_documents(
+        ids=ids,
+        documents=documents,
+        embeddings=embeddings,
+        metadatas=metadatas
+    )
+    
+    # Persist to disk
+    vectorstore.persist()
+```
+
+### Configuration Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `data_dir` | "data/documents" | Directory containing JSON documents |
+| `store_path` | "data/vectorstore" | Vector store persistence path |
+| `batch_size` | 32 | Embedding generation batch size |
+| `max_tokens_per_chunk` | 450 | Maximum tokens per chunk |
+| `chunk_size` | 400 | Target chunk size |
+| `overlap` | 60 | Overlap between chunks |
+| `embedding_model` | paraphrase-multilingual-MiniLM-L12-v2 | Sentence transformer model |
+
+### Performance Optimization
+
+#### **Memory Management**
+```python
+# Process in smaller batches for memory efficiency
+batch_size = 16  # Instead of 32
+
+# Clear GPU memory between batches
+if torch.cuda.is_available():
+    torch.cuda.empty_cache()
+```
+
+#### **GPU Acceleration**
+```python
+# Automatic GPU detection
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+# Batch size optimization for GPU
+if torch.cuda.is_available():
+    batch_size = 64  # Larger batches for GPU
+else:
+    batch_size = 16  # Smaller batches for CPU
+```
+
+### Output Structure
+
+#### **Vector Store Format**
+```
+data/vectorstore/
+├── chroma.sqlite3          # ChromaDB database
+├── index/                  # Vector indices
+│   ├── id_to_uuid.pkl
+│   └── index_header.pkl
+└── metadata/               # Document metadata
+    ├── chunk_0.json
+    ├── chunk_1.json
+    └── ...
+```
+
+#### **Chunk Metadata Structure**
+```json
+{
+  "chunk_id": "doc1_chunk_0",
+  "text": "Chunk content here...",
+  "doc_id": "doc1",
+  "title": "Document Title",
+  "heading": "Section Heading",
+  "position": 0,
+  "url": "https://example.com/article",
+  "category": "diabetes",
+  "token_count": 387
+}
+```
+
+### Monitoring & Debugging
+
+#### **Progress Tracking**
+```bash
+# Enable detailed logging
+python -m src.pipelines.build_knowledge --log-level DEBUG
+
+# Expected output:
+# 2026-03-20 08:30:00 [INFO] build_knowledge - Found 150 JSON files in data/documents
+# 2026-03-20 08:30:01 [INFO] build_knowledge - Starting document chunking...
+# 2026-03-20 08:30:05 [INFO] build_knowledge - Document 1/150: 8 chunks
+# 2026-03-20 08:30:05 [INFO] build_knowledge - Generated 1200 total chunks from 150 documents
+# 2026-03-20 08:30:06 [INFO] build_knowledge - Starting embedding generation...
+# 2026-03-20 08:30:06 [INFO] build_knowledge - Using device: cuda
+# 2026-03-20 08:30:10 [INFO] build_knowledge - Batch 1/38: 32 embeddings generated
+# 2026-03-20 08:31:45 [INFO] build_knowledge - Generated 1200 embeddings
+# 2026-03-20 08:31:46 [INFO] build_knowledge - Starting vector storage...
+# 2026-03-20 08:32:00 [INFO] build_knowledge - Vector store successfully persisted to data/vectorstore
+```
+
+#### **Performance Metrics**
+```python
+# Expected performance characteristics:
+Documents: 150 files (~50MB)
+Chunks: 1,200 chunks (~200MB)
+Embeddings: 1,200 vectors (~400MB)
+Processing time: ~2-5 minutes (GPU), ~10-15 minutes (CPU)
+Memory usage: ~2-4GB peak
+```
+
+---
+
+## 🤖 RAG Chat Pipeline (`chat_pipeline.py`)
+
+### Overview
+`chat_pipeline.py` cung cấp complete RAG system với vector retrieval và LLM generation.
+
+### Core Components
+
+#### **RAGChatPipeline Class**
 ```python
 class RAGChatPipeline:
     def __init__(
@@ -38,16 +517,14 @@ class RAGChatPipeline:
     )
 ```
 
-**Pipeline Flow:**
-1. User Query → Vector Embedding
-2. Vector Similarity Search → Relevant Chunks
-3. Context Building → LLM Generation
-4. Response Formatting → Final Answer
+#### **Pipeline Flow**
+```
+User Query → Vector Embedding → Similarity Search → Context Building → LLM Generation → Response Formatting
+```
 
-## 🚀 Usage
+### Usage Examples
 
-### Programmatic API
-
+#### **Programmatic API**
 ```python
 from src.pipelines.chat_pipeline import RAGChatPipeline
 
@@ -69,7 +546,7 @@ print(f"Sources: {response.sources}")
 queries = [
     "What is type 1 diabetes?",
     "How is diabetes diagnosed?",
-    "What are the treatment options?"
+    "What are treatment options?"
 ]
 responses = pipeline.batch_query(queries)
 for query, resp in zip(queries, responses):
@@ -78,8 +555,7 @@ for query, resp in zip(queries, responses):
     print("---")
 ```
 
-### CLI Interface
-
+#### **CLI Interface**
 ```bash
 # Interactive chat mode
 python -m src.pipelines.chat_pipeline chat
@@ -94,7 +570,48 @@ python -m src.pipelines.chat_pipeline batch --file queries.txt
 python -m src.pipelines.chat_pipeline health
 ```
 
-### Advanced Usage
+#### **Advanced Usage**
+```python
+# Custom pipeline configuration
+pipeline = RAGChatPipeline(
+    vectorstore_path="custom_vectorstore",
+    embedding_model="sentence-transformers/all-MiniLM-L6-v2",
+    llm_model="llama3:instruct",
+    top_k=10,
+    max_context_tokens=2000,
+    temperature=0.1
+)
+
+# Query with custom options
+response = pipeline.query(
+    query="Explain diabetes complications",
+    include_metadata=True,
+    min_relevance_score=0.7
+)
+
+# Get detailed statistics
+stats = pipeline.get_statistics()
+print(f"Total documents: {stats['total_documents']}")
+print(f"Total chunks: {stats['total_chunks']}")
+print(f"Average response time: {stats['avg_response_time']:.2f}s")
+```
+
+#### **CLI Interface**
+```bash
+# Interactive chat mode
+python -m src.pipelines.chat_pipeline chat
+
+# Single query
+python -m src.pipelines.chat_pipeline query "What is diabetes?"
+
+# Batch queries from file
+python -m src.pipelines.chat_pipeline batch --file queries.txt
+
+# Health check
+python -m src.pipelines.chat_pipeline health
+```
+
+#### **Advanced Usage**
 
 ```python
 # Custom pipeline with specific configuration
