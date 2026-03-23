@@ -24,30 +24,28 @@ def normalize_url(url: str, base_url: str = "") -> str:
     
     # Handle relative URLs
     if not parsed.scheme and not parsed.netloc and base_url:
+        # Parse base URL to extract domain
+        base_parsed = urlparse(base_url)
+        base_domain = f"{base_parsed.scheme}://{base_parsed.netloc}"
+        
         if url.startswith('/'):
-            return f"{base_url.rstrip('/')}{url}"
+            # Absolute path: /health-information/diabetes/overview/what-is-diabetes
+            return f"{base_domain}{url}"
         else:
-            return f"{base_url.rstrip('/')}/{url}"
+            # Relative path: health-information/diabetes/overview/what-is-diabetes
+            return f"{base_domain}/{url}"
     
-    # Normalize scheme and netloc
-    scheme = parsed.scheme or "https"
-    netloc = parsed.netloc or ""
-    path = parsed.path
+    # If URL already has scheme and netloc, return as-is
+    if parsed.scheme and parsed.netloc:
+        return url
     
-    # Remove default port
-    if netloc.endswith(":80") and scheme == "http":
-        netloc = netloc[:-3]
-    elif netloc.endswith(":443") and scheme == "https":
-        netloc = netloc[:-4]
+    # If URL has scheme but no netloc (unlikely), add netloc from base
+    if parsed.scheme and not parsed.netloc and base_url:
+        base_parsed = urlparse(base_url)
+        return f"{parsed.scheme}://{base_parsed.netloc}{parsed.path}"
     
-    # Rebuild URL
-    normalized = parsed._replace(scheme=scheme, netloc=netloc, path=path)
-    final = urlunparse(normalized)
-    
-    if final.endswith("/") and final != "/":
-        final = final.rstrip("/")
-    
-    return final
+    # Default: return original URL
+    return url
 
 
 def create_slug_from_url(url: str) -> str:

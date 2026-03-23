@@ -2,6 +2,7 @@
   "sites": {
     "yhoccongdong": {
       "base_url": "https://yhoccongdong.com/tieu-duong/",
+      "domain": "https://yhoccongdong.com",
       "default_category": "general",
       "selectors": {
         "article_links": [
@@ -51,6 +52,7 @@
     },
     "who": {
       "base_url": "https://www.who.int",
+      "domain": "https://www.who.int",
       "default_category": "concepts",
       "selectors": {
         "article_links": [
@@ -70,6 +72,7 @@
     },
     "niddk": {
       "base_url": "https://www.niddk.nih.gov/health-information/diabetes",
+      "domain": "https://www.niddk.nih.gov",
       "default_category": "general",
       "selectors": {
         "article_links": [
@@ -80,7 +83,10 @@
           "treatment": "treatment", 
           "symptoms": "symptoms",
           "causes": "causes",
-          "management": "lifestyle"
+          "management": "lifestyle",
+          "overview": "concepts",
+          "definition": "concepts",
+          "diagnosis": "concepts"
         }
       },
       "pagination": {
@@ -89,6 +95,7 @@
     },
     "diabetes_org": {
       "base_url": "https://diabetes.org/",
+      "domain": "https://diabetes.org",
       "default_category": "general",
       "selectors": {
         "article_links": [
