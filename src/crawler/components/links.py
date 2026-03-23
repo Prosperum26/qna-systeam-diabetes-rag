@@ -39,9 +39,10 @@ class LinkExtractor:
         self.crawler = crawler
         self.selectors_config = site_config.get('selectors', {})
         
-        # Track seen URLs and titles to avoid duplicates
+        # Track seen URLs, titles, and content hashes to avoid duplicates
         self._seen_urls: set[str] = set()
         self._seen_titles: set[str] = set()
+        self._seen_hashes: set[str] = set()
     
     def extract_links_from_page(self, soup: BeautifulSoup) -> List[ArticleLink]:
         """
@@ -100,7 +101,7 @@ class LinkExtractor:
         base_url = self.site_config.get('base_url', '')
         full_url = normalize_url(href, base_url)
         
-        # Skip if already seen
+        # Skip if already seen URL
         if full_url in self._seen_urls:
             self.crawler.logger.debug("Skipping already-seen URL: %s", full_url)
             return None
@@ -108,6 +109,12 @@ class LinkExtractor:
         # Extract title
         title = self._extract_title(element)
         if not title or title in self._seen_titles:
+            return None
+        
+        # Generate content hash from element content
+        content_hash = self._generate_content_hash(element)
+        if content_hash and content_hash in self._seen_hashes:
+            self.crawler.logger.debug("Skipping duplicate content hash: %s", content_hash)
             return None
         
         # Extract category
@@ -119,6 +126,8 @@ class LinkExtractor:
         # Track to avoid duplicates
         self._seen_urls.add(full_url)
         self._seen_titles.add(title)
+        if content_hash:
+            self._seen_hashes.add(content_hash)
         
         return article_link
     
@@ -176,8 +185,53 @@ class LinkExtractor:
             return links[:max_links]
         return links
     
+    def _generate_content_hash(self, element: Tag) -> Optional[str]:
+        """
+        Generate content hash from element for duplicate detection.
+        
+        Args:
+            element: HTML element containing link
+            
+        Returns:
+            Content hash string or None if failed
+        """
+        try:
+            import hashlib
+            from processors import normalize_text
+            
+            # Get text content from element and nearby siblings
+            content_parts = []
+            
+            # Add element text
+            element_text = normalize_text(element.get_text())
+            if element_text:
+                content_parts.append(element_text)
+            
+            # Add title from nearby headings
+            parent = element.parent
+            if parent:
+                # Look for heading elements near the link
+                for heading in parent.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
+                    heading_text = normalize_text(heading.get_text())
+                    if heading_text and heading_text != element_text:
+                        content_parts.append(heading_text)
+                        break  # Use first heading found
+            
+            # Generate hash from combined content
+            if content_parts:
+                combined_content = " ".join(content_parts)
+                content_hash = hashlib.md5(combined_content.encode('utf-8')).hexdigest()
+                return content_hash
+            
+            return None
+            
+        except Exception as e:
+            self.crawler.logger.debug("Failed to generate content hash: %s", e)
+            return None
+    
     def reset_tracking(self):
-        """Reset tracking of seen URLs and titles."""
+        """Reset tracking of seen URLs, titles, and content hashes."""
         self._seen_urls.clear()
         self._seen_titles.clear()
-        self.crawler.logger.debug("Reset link tracking")
+        self._seen_hashes.clear()
+        self.crawler.logger.debug("Reset link tracking (URLs, titles, and hashes)")

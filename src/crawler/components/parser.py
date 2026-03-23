@@ -45,6 +45,9 @@ class DocumentParser:
             # Extract title
             title = self._extract_title(soup, article_link.title)
             
+            # Generate content hash
+            content_hash = self._generate_content_hash(sections)
+            
             # Create document
             document = {
                 "doc_id": self._create_doc_id(article_link.url),
@@ -55,7 +58,10 @@ class DocumentParser:
                 "metadata": {
                     "crawl_time": datetime.now(timezone.utc).isoformat(),
                     "source_url": article_link.url,
-                    "parser_type": "DocumentParser"
+                    "parser_type": "DocumentParser",
+                    "content_hash": content_hash,
+                    "total_sections": len(sections),
+                    "content_length": sum(len(section.get("content", "")) for section in sections)
                 }
             }
             
@@ -160,6 +166,46 @@ class DocumentParser:
             
         except Exception:
             return fallback_title
+    
+    def _generate_content_hash(self, sections: list) -> str:
+        """
+        Generate content hash from document sections.
+        
+        Args:
+            sections: List of section dictionaries
+            
+        Returns:
+            MD5 hash string of normalized content
+        """
+        try:
+            import hashlib
+            from processors import normalize_text
+            
+            # Extract and normalize content from all sections
+            content_parts = []
+            for section in sections:
+                content = section.get('content', '')
+                if content:
+                    normalized = normalize_text(content)
+                    if normalized:
+                        content_parts.append(normalized)
+            
+            if content_parts:
+                # Sort content for consistent hashing regardless of order
+                sorted_content = sorted(content_parts)
+                combined_content = "\n".join(sorted_content)
+                
+                # Generate MD5 hash
+                content_hash = hashlib.md5(combined_content.encode('utf-8')).hexdigest()
+                return content_hash
+            
+            # Fallback hash for empty content
+            return hashlib.md5(b"empty_content").hexdigest()
+            
+        except Exception:
+            # Fallback hash if generation fails
+            import hashlib
+            return hashlib.md5(b"hash_generation_failed").hexdigest()
     
     def _create_doc_id(self, url: str) -> str:
         """

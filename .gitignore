@@ -17,3 +17,6 @@ data/
 
 # Web HTML example
 exampleWebHtml/
+
+#logs/
+logs/
