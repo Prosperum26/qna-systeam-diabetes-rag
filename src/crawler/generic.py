@@ -63,8 +63,8 @@ class GenericCrawler(BaseCrawler):
         Returns:
             Normalized absolute URL
         """
-        # Use domain if available, otherwise base_url
-        base_url = self.site_config.get('domain', self.site_config.get('base_url', ''))
+        # Use base_url for URL normalization
+        base_url = self.site_config.get('base_url', '')
         return normalize_url(url, base_url)
     
     def get_article_links(

@@ -97,8 +97,8 @@ class LinkExtractor:
         if not href:
             return None
         
-        # Normalize URL - use domain if available, otherwise base_url
-        base_url = self.site_config.get('domain', self.site_config.get('base_url', ''))
+        # Normalize URL - use base_url for relative URLs
+        base_url = self.site_config.get('base_url', '')
         full_url = normalize_url(href, base_url)
         
         # Skip if already seen URL

@@ -24,16 +24,42 @@ def normalize_url(url: str, base_url: str = "") -> str:
     
     # Handle relative URLs
     if not parsed.scheme and not parsed.netloc and base_url:
-        # Parse base URL to extract domain
+        # Parse base URL to extract domain and path
         base_parsed = urlparse(base_url)
         base_domain = f"{base_parsed.scheme}://{base_parsed.netloc}"
+        base_path = base_parsed.path.rstrip('/')
         
         if url.startswith('/'):
             # Absolute path: /health-information/diabetes/overview/what-is-diabetes
-            return f"{base_domain}{url}"
+            # Smart detection: check if URL already contains base_path
+            if base_path and url.startswith(base_path + '/'):
+                # URL already contains full path, use domain only
+                return f"{base_domain}{url}"
+            elif base_path and url == base_path:
+                # URL matches base_path exactly
+                return f"{base_domain}{url}"
+            else:
+                # URL doesn't contain base_path, use domain only
+                return f"{base_domain}{url}"
         else:
             # Relative path: health-information/diabetes/overview/what-is-diabetes
-            return f"{base_domain}/{url}"
+            # Smart detection: check if relative URL already contains base_path components
+            if base_path:
+                # Split base_path and url into components
+                base_components = base_path.split('/')
+                url_components = url.split('/')
+                
+                # Check if URL starts with base_path components
+                if (len(url_components) >= len(base_components) and 
+                    url_components[:len(base_components)] == base_components):
+                    # URL already contains base path, use domain + full url
+                    return f"{base_domain}/{url}"
+                else:
+                    # URL doesn't contain base path, use domain + base_path + url
+                    return f"{base_domain}/{base_path}/{url}"
+            else:
+                # No base path, use domain + url
+                return f"{base_domain}/{url}"
     
     # If URL already has scheme and netloc, return as-is
     if parsed.scheme and parsed.netloc:
