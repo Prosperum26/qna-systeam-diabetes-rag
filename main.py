@@ -4,6 +4,8 @@ Usage:
   python main.py crawl      # Crawl web -> lưu raw
   python main.py index      # Process + embed + build vectorstore
   python main.py ask        # Chạy Q&A interactive
+Chạy các pipelines từ src/pipelines
+
 """
 import sys
 

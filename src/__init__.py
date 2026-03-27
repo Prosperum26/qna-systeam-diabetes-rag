@@ -1,7 +1,7 @@
 """
 RAG Q&A System — Diabetes knowledge base.
 
-Subpackages: crawler, embedder, processors, vectorstore, llm, rag.
+Subpackages: crawler, embedder, processors, vectorstore, llm, pipelines.
 """
 
 __all__ = [
@@ -9,6 +9,6 @@ __all__ = [
     "embedder",
     "llm",
     "processors",
-    "rag",
+    "pipelines",
     "vectorstore",
 ]

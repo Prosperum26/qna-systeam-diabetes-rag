@@ -19,3 +19,6 @@ data/
 exampleWebHtml/
 
 logs/
+
+# Documentation (optional - keep local only)
+docs/

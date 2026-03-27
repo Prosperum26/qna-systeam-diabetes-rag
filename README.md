@@ -14,6 +14,7 @@ Một hệ thống RAG (Retrieval-Augmented Generation) hoàn chỉnh cho việc
 ## 🎯 Mục tiêu
 
 Xây dựng một hệ thống Q&A thông minh có thể:
+
 - Crawl dữ liệu từ các nguồn web về tiểu đường
 - Xử lý và chia nhỏ văn bản thành các đoạn có ý nghĩa
 - Lưu trữ vector embeddings cho việc tìm kiếm tương đồng
@@ -55,6 +56,7 @@ qna-systeam-diabetes-rag/
 ## 🚀 Quick Start
 
 ### Prerequisites
+
 - Python 3.8+
 - Ollama (cho local LLM)
 - Git
@@ -80,21 +82,24 @@ ollama pull llama3.2  # hoặc model khác
 ### Configuration
 
 Chỉnh sửa `config.py` với các thông số:
+
 - `CRAWL_URL`: URLs để crawl dữ liệu
-- `MODEL_NAME`: Tên model Ollama
+- `LLM_MODEL`: Tên model Ollama
 - `VECTORSTORE_PATH`: Đường dẫn lưu vector database
+- `CHUNK_SIZE`: Kích thước chunk
+- `CHUNK_OVERLAP`: overlap giữa các chunk / Chưa implement
 
 ### Usage
 
 ```bash
 # Crawl dữ liệu
-python main.py crawl
+python src/pipelines/crawl_runner.py - Hiện chưa implement xong, dùng test/crawl_test.py để test crawl dữ liệu
 
 # Index dữ liệu vào vector store
-python main.py index
+python src/pipelines/build_knowledge.py
 
 # Hỏi đáp
-python main.py ask "Câu hỏi của bạn về tiểu đường"
+python src/pipelines/chat_pipeline.py
 ```
 
 ## 📚 Module Documentation
@@ -107,18 +112,19 @@ Mỗi module trong `src/` có README riêng với chi tiết:
 - **[llm/](src/llm/README.md)** - Local LLM integration
 - **[pipelines/](src/pipelines/README.md)** - End-to-end processing pipelines
 - **[processors/](src/processors/README.md)** - Text processing utilities
-- **[rag/](src/rag/README.md)** - Core RAG pipeline
 - **[retriever/](src/retriever/README.md)** - Vector retrieval logic
 - **[vectorstore/](src/vectorstore/README.md)** - Vector database operations
 
 ## 🛠️ Development
 
 ### Adding New Data Sources
+
 1. Thêm URL vào `config.py`
 2. Tùy chỉnh crawler trong `src/crawler/`
 3. Chạy `python main.py crawl`
 
 ### Extending Chunking Strategies
+
 1. Implement new chunker trong `src/chunking/`
 2. Register trong `src/chunking/rules.py`
 3. Configure trong `config.py`
@@ -137,18 +143,16 @@ python -m pytest tests/test_chunking.py
 
 - **Crawling**: Tùy thuộc vào số lượng URL và kích thước trang
 - **Embedding**: ~1-2s per chunk (sentence-transformers)
-- **Retrieval**: <100ms cho 10k chunks
+- **Retrieval**: <100ms cho 10k chunks (Vẫn chưa optimize và kiểm thử)
 - **Generation**: 2-5s per response (Ollama local)
 
 ## 🔧 Troubleshooting
 
 ### Common Issues
+
 1. **Ollama connection failed**: Đảm bảo Ollama đang chạy
 2. **Memory errors**: Giảm chunk size hoặc batch size
 3. **Poor retrieval quality**: Tinh chỉnh chunking strategy và embedding model
-
-### Logs
-Check logs trong `logs/` directory cho detailed error messages.
 
 ## 🤝 Contributing
 
